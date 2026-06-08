@@ -34,33 +34,15 @@ impl CatalogSearch for SqliteCatalogSearch {
         let limit = query.page.limit.clamp(1, shared::Pagination::MAX_LIMIT) as i64;
         let offset = query.page.offset as i64;
 
-        // FTS text search — returns matching product_ids (empty = no text filter).
-        let fts_ids: Option<Vec<String>> = if let Some(ref raw) = query.text {
-            let term = build_fts_query(raw);
-            if term.is_empty() {
-                None
-            } else {
-                let ids: Vec<String> = sqlx::query_scalar(
-                    "SELECT product_id FROM product_fts WHERE product_fts MATCH ?",
-                )
-                .bind(&term)
-                .fetch_all(&self.db.reader)
-                .await
-                .map_err(be)?;
-                if ids.is_empty() {
-                    return Ok(SearchResult {
-                        items: vec![],
-                        total: 0,
-                        facets: vec![],
-                    });
-                }
-                Some(ids)
-            }
-        } else {
-            None
-        };
+        // Build the FTS term once; pass it as a subquery condition — avoids loading
+        // all matching product_ids into Rust memory before the main SQL round-trip.
+        let fts_term: Option<String> = query
+            .text
+            .as_deref()
+            .map(build_fts_query)
+            .filter(|t| !t.is_empty());
 
-        let total = count_results(&self.db, query, &fts_ids).await?;
+        let total = count_results(&self.db, query, fts_term.as_deref()).await?;
         if total == 0 {
             return Ok(SearchResult {
                 items: vec![],
@@ -80,7 +62,7 @@ impl CatalogSearch for SqliteCatalogSearch {
             "SELECT pp.id, pp.title, pp.slug, pp.price_minor, pp.currency, pp.thumb \
              FROM product_projection pp",
         );
-        push_where(&mut qb, query, &fts_ids);
+        push_where(&mut qb, query, fts_term.as_deref());
         qb.push(format!(" ORDER BY {order} LIMIT "));
         qb.push_bind(limit);
         qb.push(" OFFSET ");
@@ -177,16 +159,17 @@ impl CatalogSearch for SqliteCatalogSearch {
 // Построение WHERE-условий (shared between count and select queries)
 // -----------------------------------------------------------------
 
-/// Добавляет WHERE-условия в QueryBuilder на основе SearchQuery и (опц.) FTS-результатов.
-fn push_where(qb: &mut QueryBuilder<Sqlite>, query: &SearchQuery, fts_ids: &Option<Vec<String>>) {
+/// Добавляет WHERE-условия в QueryBuilder на основе SearchQuery и (опц.) FTS-запроса.
+/// FTS-фильтр реализован через подзапрос — не загружает matching IDs в Rust-память.
+fn push_where(qb: &mut QueryBuilder<Sqlite>, query: &SearchQuery, fts_term: Option<&str>) {
     qb.push(" WHERE pp.status = 'published'");
 
-    if let Some(ids) = fts_ids {
-        qb.push(" AND pp.id IN (");
-        let mut sep = qb.separated(", ");
-        for id in ids {
-            sep.push_bind(id.clone());
-        }
+    if let Some(term) = fts_term {
+        qb.push(
+            " AND pp.id IN \
+             (SELECT product_id FROM product_fts WHERE product_fts MATCH ",
+        );
+        qb.push_bind(term.to_string());
         qb.push(")");
     }
 
@@ -294,11 +277,11 @@ fn push_filter_cond(qb: &mut QueryBuilder<Sqlite>, f: &FilterCond) {
 async fn count_results(
     db: &ContextDb,
     query: &SearchQuery,
-    fts_ids: &Option<Vec<String>>,
+    fts_term: Option<&str>,
 ) -> Result<u64, SearchError> {
     let mut qb: QueryBuilder<Sqlite> =
         QueryBuilder::new("SELECT COUNT(*) FROM product_projection pp");
-    push_where(&mut qb, query, fts_ids);
+    push_where(&mut qb, query, fts_term);
     let count: i64 = qb
         .build_query_scalar()
         .fetch_one(&db.reader)
@@ -315,17 +298,14 @@ async fn delete_fts_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     product_id: &str,
 ) -> Result<(), sqlx::Error> {
-    let rowid: Option<i64> =
-        sqlx::query_scalar("SELECT rowid FROM product_fts WHERE product_id = ? LIMIT 1")
-            .bind(product_id)
-            .fetch_optional(&mut **tx)
-            .await?;
-    if let Some(rid) = rowid {
-        sqlx::query("DELETE FROM product_fts WHERE rowid = ?")
-            .bind(rid)
-            .execute(&mut **tx)
-            .await?;
-    }
+    // Single statement: eliminates the two-query SELECT-then-DELETE round-trip.
+    sqlx::query(
+        "DELETE FROM product_fts \
+         WHERE rowid IN (SELECT rowid FROM product_fts WHERE product_id = ?)",
+    )
+    .bind(product_id)
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
