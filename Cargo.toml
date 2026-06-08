@@ -1,0 +1,23 @@
+# Workspace manifest — модульный монолит маркетплейса.
+# Крейты-контексты см. в .claude/docs/design-1a.md и CLAUDE.md.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+license = "PolyForm-Noncommercial-1.0.0"
+publish = false
+
+[workspace.dependencies]
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+
+# Внутренние крейты-контексты
+shared = { path = "crates/shared" }
+db = { path = "crates/db" }
