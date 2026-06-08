@@ -1,14 +1,3 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+//! `identity` — контекст Identity & Access: аккаунты, мульти-роль, сессии, продавцы.
+//!
+//! Скелет в фундаменте; модель и реализация — задача T1a-2 (см. `.claude/docs/design-1a.md` §5).

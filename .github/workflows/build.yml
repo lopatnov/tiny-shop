@@ -1,4 +1,14 @@
 name: Build
+
+# Минимальные права по умолчанию (least privilege).
+permissions:
+    contents: read
+
+# Отменять устаревшие прогоны при новом push в ту же ветку (экономия CI).
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
 on:
     push:
         branches:
@@ -25,6 +35,8 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  persist-credentials: false
             # TODO(devops/security): запинить по SHA (как checkout). Сейчас теги — dependabot обновит.
             - name: Install Rust toolchain
               uses: dtolnay/rust-toolchain@stable

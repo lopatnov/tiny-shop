@@ -61,17 +61,35 @@ pub fn now_ms() -> i64 {
 // ---------------------------------------------------------------------------
 
 /// Параметры пагинации (вход запроса).
+///
+/// `limit` ограничен сверху [`Pagination::MAX_LIMIT`] — используй [`Pagination::clamped`] для
+/// значений из недоверенного ввода (запрос не должен мочь затребовать слишком большую страницу).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pagination {
     pub offset: u32,
     pub limit: u32,
 }
 
+impl Pagination {
+    /// Верхняя граница размера страницы (защита от чрезмерных выборок).
+    pub const MAX_LIMIT: u32 = 100;
+    /// Размер страницы по умолчанию.
+    pub const DEFAULT_LIMIT: u32 = 24;
+
+    /// Создать, зажав `limit` в диапазон `1..=MAX_LIMIT` (для недоверенного ввода).
+    pub fn clamped(offset: u32, limit: u32) -> Self {
+        Self {
+            offset,
+            limit: limit.clamp(1, Self::MAX_LIMIT),
+        }
+    }
+}
+
 impl Default for Pagination {
     fn default() -> Self {
         Self {
             offset: 0,
-            limit: 24,
+            limit: Self::DEFAULT_LIMIT,
         }
     }
 }

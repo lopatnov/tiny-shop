@@ -1,14 +1,4 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+//! `product` — контекст товара продавца + цифровая конфигурация (формат/опции/способ выдачи).
+//!
+//! Скелет в фундаменте; модель и эмиссия событий `Product*` — задача T1a-4
+//! (см. `.claude/docs/design-1a.md` §3).
