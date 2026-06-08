@@ -1,18 +1,24 @@
-//! `catalog` — контекст каталога: таксономия, фильтры и порт поиска/фильтрации.
+//! `catalog` — контекст каталога: таксономия, фильтры, проекция, порт поиска/фильтрации.
 //!
-//! В T1a-7 здесь — контракт `CatalogSearch` и его типы (design-1a.md §2.3, §4).
-//! 1a-адаптер `SqliteCatalogSearch` (FTS5 + SQL по проекции) — задача T1a-5.
-//! Таксономия (категории/атрибуты/опции/фильтры + i18n) — модули [`taxonomy`]/[`repository`]
-//! (T1a-3, схема `migrations/catalog/0002_taxonomy.sql`). Проекция/индекс — T1a-5.
+//! Контракт `CatalogSearch` и его типы (design-1a.md §2.3, §4).
+//! Адаптер `SqliteCatalogSearch` (FTS5 + SQL по проекции) + `CatalogProjection`
+//! (консьюмер событий Product*) — T1a-5.
+//! Таксономия (категории/атрибуты/опции/фильтры + i18n) — [`repository`] / [`taxonomy`]
+//! (T1a-3, схема `migrations/catalog/0002_taxonomy.sql`).
+//! Проекция/FTS-схема — `migrations/catalog/0003_projection.sql`.
 
 use std::future::Future;
 
 use shared::Pagination;
 
+pub mod projection;
 pub mod repository;
+pub mod search;
 pub mod taxonomy;
 
+pub use projection::CatalogProjection;
 pub use repository::{TaxonomyError, TaxonomyRepo};
+pub use search::SqliteCatalogSearch;
 pub use taxonomy::{Attribute, AttributeOption, Category, DataType, Filter, FilterType, Lang};
 
 #[derive(Debug, thiserror::Error)]
