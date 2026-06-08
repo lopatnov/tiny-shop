@@ -13,3 +13,8 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+cucumber = "0.21"
+
+[[test]]
+name = "bdd"
+harness = false
