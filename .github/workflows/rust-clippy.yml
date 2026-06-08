@@ -1,0 +1,52 @@
+name: Rust Clippy
+
+# Clippy SARIF → GitHub Advanced Security (Code Scanning).
+# Результаты видны в Security → Code scanning alerts репозитория.
+
+permissions:
+    contents: read
+    security-events: write
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        types: [opened, synchronize, reopened]
+    schedule:
+        - cron: "0 7 * * 1" # каждый понедельник 07:00 UTC
+
+jobs:
+    clippy:
+        name: Clippy SARIF
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+              with:
+                  persist-credentials: false
+            - name: Install Rust toolchain
+              # TODO(devops/security): запинить по SHA. Сейчас тег — dependabot обновит.
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: clippy
+            - name: Cache cargo
+              uses: Swatinem/rust-cache@v2
+            - name: Install SARIF tools
+              run: cargo install clippy-sarif sarif-fmt
+            - name: Run clippy (SARIF output)
+              # continue-on-error: true позволяет загрузить SARIF даже если clippy нашёл предупреждения.
+              # Зелёность билда гарантируется отдельным шагом `cargo clippy -D warnings` в build.yml.
+              run: |
+                  cargo clippy --workspace --all-targets --message-format=json \
+                    | clippy-sarif \
+                    | tee rust-clippy-results.sarif \
+                    | sarif-fmt
+              continue-on-error: true
+            - name: Upload SARIF to GitHub Advanced Security
+              uses: github/codeql-action/upload-sarif@v3
+              with:
+                  sarif_file: rust-clippy-results.sarif
+                  wait-for-processing: true
