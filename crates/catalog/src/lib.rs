@@ -2,11 +2,18 @@
 //!
 //! В T1a-7 здесь — контракт `CatalogSearch` и его типы (design-1a.md §2.3, §4).
 //! 1a-адаптер `SqliteCatalogSearch` (FTS5 + SQL по проекции) — задача T1a-5.
-//! Таксономия/EAV-схема и проекция — T1a-3/T1a-5.
+//! Таксономия (категории/атрибуты/опции/фильтры + i18n) — модули [`taxonomy`]/[`repository`]
+//! (T1a-3, схема `migrations/catalog/0002_taxonomy.sql`). Проекция/индекс — T1a-5.
 
 use std::future::Future;
 
 use shared::Pagination;
+
+pub mod repository;
+pub mod taxonomy;
+
+pub use repository::{TaxonomyError, TaxonomyRepo};
+pub use taxonomy::{Attribute, AttributeOption, Category, DataType, Filter, FilterType, Lang};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SearchError {
