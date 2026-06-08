@@ -228,7 +228,26 @@ impl ProductRepo {
         .execute(&mut *tx)
         .await?;
 
-        enqueue_product_updated(&mut tx, &v.product_id, "attribute_value_set").await?;
+        // Enriched payload: catalog projection needs attribute details to update product_attr_index
+        // without a cross-context read into product.db.
+        outbox::enqueue(
+            &mut *tx,
+            &NewEvent::new(
+                AGGREGATE,
+                &v.product_id,
+                "ProductUpdated",
+                serde_json::json!({
+                    "id": v.product_id,
+                    "reason": "attribute_value_set",
+                    "attribute_id": v.attribute_id,
+                    "data_type": v.data_type.as_str(),
+                    "val_text": v.val_text,
+                    "val_num": v.val_num,
+                    "updated_at": now_ms(),
+                }),
+            ),
+        )
+        .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -248,7 +267,22 @@ impl ProductRepo {
         .execute(&mut *tx)
         .await?;
 
-        enqueue_product_updated(&mut tx, product_id, "attribute_value_cleared").await?;
+        // Include attribute_id so catalog projection can remove the right product_attr_index row.
+        outbox::enqueue(
+            &mut *tx,
+            &NewEvent::new(
+                AGGREGATE,
+                product_id,
+                "ProductUpdated",
+                serde_json::json!({
+                    "id": product_id,
+                    "reason": "attribute_value_cleared",
+                    "attribute_id": attribute_id,
+                    "updated_at": now_ms(),
+                }),
+            ),
+        )
+        .await?;
         tx.commit().await?;
         Ok(())
     }
