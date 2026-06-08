@@ -11,14 +11,34 @@
 //!
 //! ## i18n (ADR O5)
 //! Канон названия — поле `name`/`value` (язык `uk`). Перевод на другой язык, если он есть,
-//! лежит в `translations` и резолвится через `COALESCE(перевод, канон)`. Для [`Lang::Uk`]
-//! отдельный JOIN не нужен — канон уже на нужном языке.
+//! лежит в `translations` и резолвится через `COALESCE(перевод, канон)`.
+//!
+//! Все пути чтения всегда делают `LEFT JOIN translations` — единая ветка для любого [`Lang`],
+//! без `match lang { Uk => ..., _ => ... }` на каждый запрос. Для [`Lang::Uk`] перевода в таблице
+//! нет (канон уже на этом языке), `JOIN` просто не находит строку и `COALESCE` возвращает канон —
+//! результат идентичен «короткому пути», но без удвоения SQL в каждом методе (см. также §«Простота»
+//! в `.claude/rules/index.md`). Таксономия — низкочастотные admin-управляемые таблицы (категории/
+//! атрибуты — десятки-сотни строк), поэтому цена лишнего `LEFT JOIN` пренебрежимо мала; если
+//! профилирование в будущем покажет иное — переоценить вместе с `architect`.
 
 use sqlx::Row;
 
 use db::ContextDb;
 
 use crate::taxonomy::{Attribute, AttributeOption, Category, DataType, Filter, FilterType, Lang};
+
+/// Значения `translations.entity_type` (CHECK в миграции `0002_taxonomy.sql`).
+mod entity_types {
+    pub const CATEGORY: &str = "category";
+    pub const ATTRIBUTE: &str = "attribute";
+    pub const ATTRIBUTE_OPTION: &str = "attribute_option";
+}
+
+/// Значения `translations.field` (CHECK в миграции `0002_taxonomy.sql`).
+mod fields {
+    pub const NAME: &str = "name";
+    pub const VALUE: &str = "value";
+}
 
 /// Ошибки репозитория таксономии.
 #[derive(Debug, thiserror::Error)]
@@ -73,11 +93,13 @@ impl TaxonomyRepo {
             "SELECT c.id, c.parent_id, COALESCE(t.value, c.name) AS name, c.slug, c.path, c.position \
              FROM categories c \
              LEFT JOIN translations t \
-               ON t.entity_type = 'category' AND t.entity_id = c.id \
-              AND t.lang = ? AND t.field = 'name' \
+               ON t.entity_type = ? AND t.entity_id = c.id \
+              AND t.lang = ? AND t.field = ? \
              WHERE c.id = ?",
         )
+        .bind(entity_types::CATEGORY)
         .bind(lang.as_str())
+        .bind(fields::NAME)
         .bind(id)
         .fetch_optional(&self.db.reader)
         .await?;
@@ -94,11 +116,13 @@ impl TaxonomyRepo {
             "SELECT c.id, c.parent_id, COALESCE(t.value, c.name) AS name, c.slug, c.path, c.position \
              FROM categories c \
              LEFT JOIN translations t \
-               ON t.entity_type = 'category' AND t.entity_id = c.id \
-              AND t.lang = ? AND t.field = 'name' \
+               ON t.entity_type = ? AND t.entity_id = c.id \
+              AND t.lang = ? AND t.field = ? \
              WHERE c.path = ?",
         )
+        .bind(entity_types::CATEGORY)
         .bind(lang.as_str())
+        .bind(fields::NAME)
         .bind(path)
         .fetch_optional(&self.db.reader)
         .await?;
@@ -117,11 +141,13 @@ impl TaxonomyRepo {
                     "SELECT c.id, c.parent_id, COALESCE(t.value, c.name) AS name, c.slug, c.path, c.position \
                      FROM categories c \
                      LEFT JOIN translations t \
-                       ON t.entity_type = 'category' AND t.entity_id = c.id \
-                      AND t.lang = ? AND t.field = 'name' \
+                       ON t.entity_type = ? AND t.entity_id = c.id \
+                      AND t.lang = ? AND t.field = ? \
                      WHERE c.parent_id = ? ORDER BY c.position ASC, c.id ASC",
                 )
+                .bind(entity_types::CATEGORY)
                 .bind(lang.as_str())
+                .bind(fields::NAME)
                 .bind(pid)
                 .fetch_all(&self.db.reader)
                 .await?
@@ -131,11 +157,13 @@ impl TaxonomyRepo {
                     "SELECT c.id, c.parent_id, COALESCE(t.value, c.name) AS name, c.slug, c.path, c.position \
                      FROM categories c \
                      LEFT JOIN translations t \
-                       ON t.entity_type = 'category' AND t.entity_id = c.id \
-                      AND t.lang = ? AND t.field = 'name' \
+                       ON t.entity_type = ? AND t.entity_id = c.id \
+                      AND t.lang = ? AND t.field = ? \
                      WHERE c.parent_id IS NULL ORDER BY c.position ASC, c.id ASC",
                 )
+                .bind(entity_types::CATEGORY)
                 .bind(lang.as_str())
+                .bind(fields::NAME)
                 .fetch_all(&self.db.reader)
                 .await?
             }
@@ -176,11 +204,13 @@ impl TaxonomyRepo {
                     a.is_required, a.position \
              FROM attributes a \
              LEFT JOIN translations t \
-               ON t.entity_type = 'attribute' AND t.entity_id = a.id \
-              AND t.lang = ? AND t.field = 'name' \
+               ON t.entity_type = ? AND t.entity_id = a.id \
+              AND t.lang = ? AND t.field = ? \
              WHERE a.category_id = ? ORDER BY a.position ASC, a.id ASC",
         )
+        .bind(entity_types::ATTRIBUTE)
         .bind(lang.as_str())
+        .bind(fields::NAME)
         .bind(category_id)
         .fetch_all(&self.db.reader)
         .await?;
@@ -215,11 +245,13 @@ impl TaxonomyRepo {
             "SELECT o.id, o.attribute_id, COALESCE(t.value, o.value) AS value, o.position \
              FROM attribute_options o \
              LEFT JOIN translations t \
-               ON t.entity_type = 'attribute_option' AND t.entity_id = o.id \
-              AND t.lang = ? AND t.field = 'value' \
+               ON t.entity_type = ? AND t.entity_id = o.id \
+              AND t.lang = ? AND t.field = ? \
              WHERE o.attribute_id = ? ORDER BY o.position ASC, o.id ASC",
         )
+        .bind(entity_types::ATTRIBUTE_OPTION)
         .bind(lang.as_str())
+        .bind(fields::VALUE)
         .bind(attribute_id)
         .fetch_all(&self.db.reader)
         .await?;

@@ -133,7 +133,25 @@ async fn parent_slug_uniqueness_is_enforced() {
     let err = repo.create_category(&b).await.unwrap_err();
     assert!(
         matches!(err, catalog::TaxonomyError::Db(_)),
-        "нарушение UNIQUE(parent_id, slug) должно дать ошибку БД: {err:?}"
+        "нарушение уникальности slug в пределах родителя должно дать ошибку БД: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn root_level_slug_uniqueness_is_enforced_despite_null_parent() {
+    // SQLite считает NULL != NULL — table-level UNIQUE(parent_id, slug) пропустил бы дубль
+    // среди корневых категорий. Индекс на COALESCE(parent_id, '') обязан его поймать.
+    let t = temp_db("cat-root-slug-uniq").await;
+    let repo = TaxonomyRepo::new(t.db.clone());
+
+    let a = category("c-root-a", None, "Корінь А", "root", "/root-a");
+    let b = category("c-root-b", None, "Корінь Б", "root", "/root-b");
+    repo.create_category(&a).await.unwrap();
+
+    let err = repo.create_category(&b).await.unwrap_err();
+    assert!(
+        matches!(err, catalog::TaxonomyError::Db(_)),
+        "дубль slug среди корневых категорий (parent_id IS NULL) должен дать ошибку БД: {err:?}"
     );
 }
 

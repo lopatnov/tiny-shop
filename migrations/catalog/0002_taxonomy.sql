@@ -12,9 +12,12 @@ CREATE TABLE categories (
   slug      TEXT    NOT NULL,
   path      TEXT    NOT NULL,                  -- '/electronics/phones'
   position  INTEGER NOT NULL DEFAULT 0,
-  UNIQUE (parent_id, slug),                    -- slug уникален в пределах родителя
   UNIQUE (path)                                -- путь уникален глобально
 );
+-- slug уникален в пределах родителя; UNIQUE(parent_id, slug) НЕ годится — SQLite считает
+-- NULL != NULL, и корневые категории (parent_id IS NULL) с одинаковым slug проскочат мимо
+-- table-level UNIQUE. COALESCE сводит NULL к '', и индекс ловит дубль и на корневом уровне.
+CREATE UNIQUE INDEX categories_parent_slug ON categories(COALESCE(parent_id, ''), slug);
 
 -- Атрибуты категории. data_type фиксирует тип значения (типизированный EAV).
 CREATE TABLE attributes (
@@ -59,5 +62,6 @@ CREATE TABLE translations (
   value       TEXT NOT NULL,
   PRIMARY KEY (entity_type, entity_id, lang, field)
 );
--- Lookup перевода для набора сущностей одного типа на одном языке (путь чтения списков).
-CREATE INDEX translations_lookup ON translations(entity_type, lang, entity_id);
+-- Отдельный индекс под чтение не нужен: PK (entity_type, entity_id, lang, field) уже
+-- покрывает точечный resolve и JOIN-условие "entity_type = ? AND entity_id = c.id AND lang = ?"
+-- как префиксную выборку — ровно то, что используют все текущие пути чтения.
