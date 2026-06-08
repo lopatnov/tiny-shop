@@ -13,8 +13,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use catalog::{
-    Attribute, Category, CatalogProjection, CatalogSearch, DataType, FilterCond, SearchQuery,
-    Sort, SqliteCatalogSearch, TaxonomyRepo, ProductDoc,
+    Attribute, CatalogProjection, CatalogSearch, Category, DataType, FilterCond, ProductDoc,
+    SearchQuery, Sort, SqliteCatalogSearch, TaxonomyRepo,
 };
 use db::{ContextDb, migrate_catalog, open, relay::Dispatcher};
 use shared::{DomainEvent, Pagination, now_ms};
@@ -83,39 +83,40 @@ async fn product_created_appears_in_projection() {
     let t = temp_db("proj-created").await;
     let proj = CatalogProjection::new(t.db.clone());
 
-    let ev = event(1, "ProductCreated", serde_json::json!({
-        "id": "p1",
-        "seller_id": "s1",
-        "title": "Cool Widget",
-        "slug": "cool-widget",
-        "description": "A great widget",
-        "price_minor": 1000,
-        "currency": "UAH",
-        "status": "draft",
-        "created_at": 1000,
-        "updated_at": 1000,
-    }));
+    let ev = event(
+        1,
+        "ProductCreated",
+        serde_json::json!({
+            "id": "p1",
+            "seller_id": "s1",
+            "title": "Cool Widget",
+            "slug": "cool-widget",
+            "description": "A great widget",
+            "price_minor": 1000,
+            "currency": "UAH",
+            "status": "draft",
+            "created_at": 1000,
+            "updated_at": 1000,
+        }),
+    );
 
     proj.dispatch("product", &ev).await.expect("dispatch");
 
-    let row: (String, i64, String) = sqlx::query_as(
-        "SELECT title, price_minor, status FROM product_projection WHERE id = 'p1'",
-    )
-    .fetch_one(&t.db.reader)
-    .await
-    .expect("row");
+    let row: (String, i64, String) =
+        sqlx::query_as("SELECT title, price_minor, status FROM product_projection WHERE id = 'p1'")
+            .fetch_one(&t.db.reader)
+            .await
+            .expect("row");
 
     assert_eq!(row.0, "Cool Widget");
     assert_eq!(row.1, 1000);
     assert_eq!(row.2, "draft");
 
     // FTS entry created
-    let fts: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM product_fts WHERE product_id = 'p1'",
-    )
-    .fetch_one(&t.db.reader)
-    .await
-    .expect("fts count");
+    let fts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM product_fts WHERE product_id = 'p1'")
+        .fetch_one(&t.db.reader)
+        .await
+        .expect("fts count");
     assert_eq!(fts, 1);
 }
 
@@ -124,22 +125,39 @@ async fn product_published_changes_status() {
     let t = temp_db("proj-published").await;
     let proj = CatalogProjection::new(t.db.clone());
 
-    proj.dispatch("product", &event(1, "ProductCreated", serde_json::json!({
-        "id": "p1", "seller_id": "s1", "title": "T", "slug": "t",
-        "description": "", "price_minor": 500, "currency": "UAH",
-        "status": "draft", "created_at": 1, "updated_at": 1,
-    }))).await.expect("created");
-
-    proj.dispatch("product", &event(2, "ProductPublished", serde_json::json!({
-        "id": "p1", "from": "draft", "to": "published", "updated_at": 2,
-    }))).await.expect("published");
-
-    let status: String = sqlx::query_scalar(
-        "SELECT status FROM product_projection WHERE id = 'p1'",
+    proj.dispatch(
+        "product",
+        &event(
+            1,
+            "ProductCreated",
+            serde_json::json!({
+                "id": "p1", "seller_id": "s1", "title": "T", "slug": "t",
+                "description": "", "price_minor": 500, "currency": "UAH",
+                "status": "draft", "created_at": 1, "updated_at": 1,
+            }),
+        ),
     )
-    .fetch_one(&t.db.reader)
     .await
-    .expect("status");
+    .expect("created");
+
+    proj.dispatch(
+        "product",
+        &event(
+            2,
+            "ProductPublished",
+            serde_json::json!({
+                "id": "p1", "from": "draft", "to": "published", "updated_at": 2,
+            }),
+        ),
+    )
+    .await
+    .expect("published");
+
+    let status: String =
+        sqlx::query_scalar("SELECT status FROM product_projection WHERE id = 'p1'")
+            .fetch_one(&t.db.reader)
+            .await
+            .expect("status");
 
     assert_eq!(status, "published");
 }
@@ -149,40 +167,55 @@ async fn core_update_refreshes_projection_and_fts() {
     let t = temp_db("proj-core-update").await;
     let proj = CatalogProjection::new(t.db.clone());
 
-    proj.dispatch("product", &event(1, "ProductCreated", serde_json::json!({
-        "id": "p1", "seller_id": "s1", "title": "Old Title", "slug": "old",
-        "description": "old desc", "price_minor": 100, "currency": "UAH",
-        "status": "draft", "created_at": 1, "updated_at": 1,
-    }))).await.expect("created");
-
-    proj.dispatch("product", &event(2, "ProductUpdated", serde_json::json!({
-        "id": "p1",
-        "title": "New Title",
-        "slug": "new",
-        "description": "new desc",
-        "price_minor": 200,
-        "currency": "UAH",
-        "updated_at": 2,
-    }))).await.expect("updated");
-
-    let row: (String, String, i64) = sqlx::query_as(
-        "SELECT title, slug, price_minor FROM product_projection WHERE id = 'p1'",
+    proj.dispatch(
+        "product",
+        &event(
+            1,
+            "ProductCreated",
+            serde_json::json!({
+                "id": "p1", "seller_id": "s1", "title": "Old Title", "slug": "old",
+                "description": "old desc", "price_minor": 100, "currency": "UAH",
+                "status": "draft", "created_at": 1, "updated_at": 1,
+            }),
+        ),
     )
-    .fetch_one(&t.db.reader)
     .await
-    .expect("row");
+    .expect("created");
+
+    proj.dispatch(
+        "product",
+        &event(
+            2,
+            "ProductUpdated",
+            serde_json::json!({
+                "id": "p1",
+                "title": "New Title",
+                "slug": "new",
+                "description": "new desc",
+                "price_minor": 200,
+                "currency": "UAH",
+                "updated_at": 2,
+            }),
+        ),
+    )
+    .await
+    .expect("updated");
+
+    let row: (String, String, i64) =
+        sqlx::query_as("SELECT title, slug, price_minor FROM product_projection WHERE id = 'p1'")
+            .fetch_one(&t.db.reader)
+            .await
+            .expect("row");
 
     assert_eq!(row.0, "New Title");
     assert_eq!(row.1, "new");
     assert_eq!(row.2, 200);
 
     // FTS still has exactly one entry
-    let fts: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM product_fts WHERE product_id = 'p1'",
-    )
-    .fetch_one(&t.db.reader)
-    .await
-    .expect("fts count");
+    let fts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM product_fts WHERE product_id = 'p1'")
+        .fetch_one(&t.db.reader)
+        .await
+        .expect("fts count");
     assert_eq!(fts, 1);
 }
 
@@ -217,22 +250,40 @@ async fn attribute_value_set_populates_attr_index() {
     .expect("attribute");
 
     // Create product
-    proj.dispatch("product", &event(1, "ProductCreated", serde_json::json!({
-        "id": "p1", "seller_id": "s1", "title": "Gadget", "slug": "gadget",
-        "description": "", "price_minor": 300, "currency": "UAH",
-        "status": "draft", "created_at": 1, "updated_at": 1,
-    }))).await.expect("created");
+    proj.dispatch(
+        "product",
+        &event(
+            1,
+            "ProductCreated",
+            serde_json::json!({
+                "id": "p1", "seller_id": "s1", "title": "Gadget", "slug": "gadget",
+                "description": "", "price_minor": 300, "currency": "UAH",
+                "status": "draft", "created_at": 1, "updated_at": 1,
+            }),
+        ),
+    )
+    .await
+    .expect("created");
 
     // Set attribute value
-    proj.dispatch("product", &event(2, "ProductUpdated", serde_json::json!({
-        "id": "p1",
-        "reason": "attribute_value_set",
-        "attribute_id": "attr1",
-        "data_type": "enum",
-        "val_text": "blue",
-        "val_num": null,
-        "updated_at": 2,
-    }))).await.expect("attr set");
+    proj.dispatch(
+        "product",
+        &event(
+            2,
+            "ProductUpdated",
+            serde_json::json!({
+                "id": "p1",
+                "reason": "attribute_value_set",
+                "attribute_id": "attr1",
+                "data_type": "enum",
+                "val_text": "blue",
+                "val_num": null,
+                "updated_at": 2,
+            }),
+        ),
+    )
+    .await
+    .expect("attr set");
 
     let row: (String, Option<String>) = sqlx::query_as(
         "SELECT category_id, val_text FROM product_attr_index WHERE product_id = 'p1' AND attribute_id = 'attr1'",
@@ -245,13 +296,14 @@ async fn attribute_value_set_populates_attr_index() {
     assert_eq!(row.1.as_deref(), Some("blue"));
 
     // FTS attrs updated
-    let attrs: String = sqlx::query_scalar(
-        "SELECT attrs FROM product_fts WHERE product_id = 'p1'",
-    )
-    .fetch_one(&t.db.reader)
-    .await
-    .expect("fts attrs");
-    assert!(attrs.contains("blue"), "attrs should contain 'blue', got: {attrs}");
+    let attrs: String = sqlx::query_scalar("SELECT attrs FROM product_fts WHERE product_id = 'p1'")
+        .fetch_one(&t.db.reader)
+        .await
+        .expect("fts attrs");
+    assert!(
+        attrs.contains("blue"),
+        "attrs should contain 'blue', got: {attrs}"
+    );
 }
 
 #[tokio::test]
@@ -261,30 +313,70 @@ async fn attribute_value_cleared_removes_from_index() {
     let tax = TaxonomyRepo::new(t.db.clone());
 
     tax.create_category(&Category {
-        id: "cat1".into(), parent_id: None, name: "C".into(),
-        slug: "c".into(), path: "/c".into(), position: 0,
-    }).await.expect("cat");
+        id: "cat1".into(),
+        parent_id: None,
+        name: "C".into(),
+        slug: "c".into(),
+        path: "/c".into(),
+        position: 0,
+    })
+    .await
+    .expect("cat");
     tax.create_attribute(&Attribute {
-        id: "attr1".into(), category_id: "cat1".into(), name: "Size".into(),
-        data_type: DataType::String, unit: None, is_required: false, position: 0,
-    }).await.expect("attr");
+        id: "attr1".into(),
+        category_id: "cat1".into(),
+        name: "Size".into(),
+        data_type: DataType::String,
+        unit: None,
+        is_required: false,
+        position: 0,
+    })
+    .await
+    .expect("attr");
 
-    proj.dispatch("product", &event(1, "ProductCreated", serde_json::json!({
-        "id": "p1", "seller_id": "s1", "title": "T", "slug": "t",
-        "description": "", "price_minor": 0, "currency": "UAH",
-        "status": "draft", "created_at": 1, "updated_at": 1,
-    }))).await.expect("created");
+    proj.dispatch(
+        "product",
+        &event(
+            1,
+            "ProductCreated",
+            serde_json::json!({
+                "id": "p1", "seller_id": "s1", "title": "T", "slug": "t",
+                "description": "", "price_minor": 0, "currency": "UAH",
+                "status": "draft", "created_at": 1, "updated_at": 1,
+            }),
+        ),
+    )
+    .await
+    .expect("created");
 
-    proj.dispatch("product", &event(2, "ProductUpdated", serde_json::json!({
-        "id": "p1", "reason": "attribute_value_set",
-        "attribute_id": "attr1", "data_type": "string",
-        "val_text": "large", "val_num": null, "updated_at": 2,
-    }))).await.expect("attr set");
+    proj.dispatch(
+        "product",
+        &event(
+            2,
+            "ProductUpdated",
+            serde_json::json!({
+                "id": "p1", "reason": "attribute_value_set",
+                "attribute_id": "attr1", "data_type": "string",
+                "val_text": "large", "val_num": null, "updated_at": 2,
+            }),
+        ),
+    )
+    .await
+    .expect("attr set");
 
-    proj.dispatch("product", &event(3, "ProductUpdated", serde_json::json!({
-        "id": "p1", "reason": "attribute_value_cleared",
-        "attribute_id": "attr1", "updated_at": 3,
-    }))).await.expect("attr clear");
+    proj.dispatch(
+        "product",
+        &event(
+            3,
+            "ProductUpdated",
+            serde_json::json!({
+                "id": "p1", "reason": "attribute_value_cleared",
+                "attribute_id": "attr1", "updated_at": 3,
+            }),
+        ),
+    )
+    .await
+    .expect("attr clear");
 
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM product_attr_index WHERE product_id = 'p1' AND attribute_id = 'attr1'",
@@ -302,36 +394,77 @@ async fn product_deleted_clears_all_tables() {
     let tax = TaxonomyRepo::new(t.db.clone());
 
     tax.create_category(&Category {
-        id: "cat1".into(), parent_id: None, name: "C".into(),
-        slug: "c".into(), path: "/c".into(), position: 0,
-    }).await.expect("cat");
+        id: "cat1".into(),
+        parent_id: None,
+        name: "C".into(),
+        slug: "c".into(),
+        path: "/c".into(),
+        position: 0,
+    })
+    .await
+    .expect("cat");
     tax.create_attribute(&Attribute {
-        id: "attr1".into(), category_id: "cat1".into(), name: "A".into(),
-        data_type: DataType::Enum, unit: None, is_required: false, position: 0,
-    }).await.expect("attr");
+        id: "attr1".into(),
+        category_id: "cat1".into(),
+        name: "A".into(),
+        data_type: DataType::Enum,
+        unit: None,
+        is_required: false,
+        position: 0,
+    })
+    .await
+    .expect("attr");
 
-    proj.dispatch("product", &event(1, "ProductCreated", serde_json::json!({
-        "id": "p1", "seller_id": "s1", "title": "T", "slug": "t",
-        "description": "", "price_minor": 0, "currency": "UAH",
-        "status": "draft", "created_at": 1, "updated_at": 1,
-    }))).await.expect("created");
+    proj.dispatch(
+        "product",
+        &event(
+            1,
+            "ProductCreated",
+            serde_json::json!({
+                "id": "p1", "seller_id": "s1", "title": "T", "slug": "t",
+                "description": "", "price_minor": 0, "currency": "UAH",
+                "status": "draft", "created_at": 1, "updated_at": 1,
+            }),
+        ),
+    )
+    .await
+    .expect("created");
 
-    proj.dispatch("product", &event(2, "ProductUpdated", serde_json::json!({
-        "id": "p1", "reason": "attribute_value_set",
-        "attribute_id": "attr1", "data_type": "enum",
-        "val_text": "red", "val_num": null, "updated_at": 2,
-    }))).await.expect("attr");
+    proj.dispatch(
+        "product",
+        &event(
+            2,
+            "ProductUpdated",
+            serde_json::json!({
+                "id": "p1", "reason": "attribute_value_set",
+                "attribute_id": "attr1", "data_type": "enum",
+                "val_text": "red", "val_num": null, "updated_at": 2,
+            }),
+        ),
+    )
+    .await
+    .expect("attr");
 
-    proj.dispatch("product", &event(3, "ProductDeleted", serde_json::json!({"id": "p1"})))
-        .await
-        .expect("deleted");
+    proj.dispatch(
+        "product",
+        &event(3, "ProductDeleted", serde_json::json!({"id": "p1"})),
+    )
+    .await
+    .expect("deleted");
 
     let pp: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM product_projection WHERE id = 'p1'")
-        .fetch_one(&t.db.reader).await.expect("pp");
-    let ai: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM product_attr_index WHERE product_id = 'p1'")
-        .fetch_one(&t.db.reader).await.expect("ai");
+        .fetch_one(&t.db.reader)
+        .await
+        .expect("pp");
+    let ai: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM product_attr_index WHERE product_id = 'p1'")
+            .fetch_one(&t.db.reader)
+            .await
+            .expect("ai");
     let fts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM product_fts WHERE product_id = 'p1'")
-        .fetch_one(&t.db.reader).await.expect("fts");
+        .fetch_one(&t.db.reader)
+        .await
+        .expect("fts");
 
     assert_eq!(pp, 0);
     assert_eq!(ai, 0);
@@ -342,16 +475,31 @@ async fn product_deleted_clears_all_tables() {
 // Тесты SqliteCatalogSearch
 // ---------------------------------------------------------------------------
 
-async fn setup_published_product(_t: &TempDb, proj: &CatalogProjection, id: &str, title: &str, price: i64) {
+async fn setup_published_product(
+    _t: &TempDb,
+    proj: &CatalogProjection,
+    id: &str,
+    title: &str,
+    price: i64,
+) {
     let slug = id.replace('_', "-");
     proj.dispatch("product", &event(1, "ProductCreated", serde_json::json!({
         "id": id, "seller_id": "s1", "title": title, "slug": slug,
         "description": format!("Description of {title}"), "price_minor": price, "currency": "UAH",
         "status": "draft", "created_at": 1, "updated_at": 1,
     }))).await.expect("created");
-    proj.dispatch("product", &event(2, "ProductPublished", serde_json::json!({
-        "id": id, "from": "draft", "to": "published", "updated_at": 2,
-    }))).await.expect("published");
+    proj.dispatch(
+        "product",
+        &event(
+            2,
+            "ProductPublished",
+            serde_json::json!({
+                "id": id, "from": "draft", "to": "published", "updated_at": 2,
+            }),
+        ),
+    )
+    .await
+    .expect("published");
 }
 
 #[tokio::test]
@@ -364,11 +512,20 @@ async fn search_returns_published_products_only() {
     setup_published_product(&t, &proj, "p1", "Blue Widget", 1000).await;
 
     // Draft product (should not appear)
-    proj.dispatch("product", &event(3, "ProductCreated", serde_json::json!({
-        "id": "p2", "seller_id": "s1", "title": "Hidden Draft", "slug": "hidden-draft",
-        "description": "", "price_minor": 500, "currency": "UAH",
-        "status": "draft", "created_at": 2, "updated_at": 2,
-    }))).await.expect("draft created");
+    proj.dispatch(
+        "product",
+        &event(
+            3,
+            "ProductCreated",
+            serde_json::json!({
+                "id": "p2", "seller_id": "s1", "title": "Hidden Draft", "slug": "hidden-draft",
+                "description": "", "price_minor": 500, "currency": "UAH",
+                "status": "draft", "created_at": 2, "updated_at": 2,
+            }),
+        ),
+    )
+    .await
+    .expect("draft created");
 
     let result = search.search(&default_query()).await.expect("search");
     assert_eq!(result.total, 1);
@@ -408,7 +565,10 @@ async fn search_price_range_filter() {
 
     let result = search
         .search(&SearchQuery {
-            filters: vec![FilterCond::RangePrice { min_minor: Some(200), max_minor: Some(1000) }],
+            filters: vec![FilterCond::RangePrice {
+                min_minor: Some(200),
+                max_minor: Some(1000),
+            }],
             ..default_query()
         })
         .await
@@ -426,13 +586,26 @@ async fn search_checkbox_or_filter() {
     let tax = TaxonomyRepo::new(t.db.clone());
 
     tax.create_category(&Category {
-        id: "cat1".into(), parent_id: None, name: "Electronics".into(),
-        slug: "electronics".into(), path: "/electronics".into(), position: 0,
-    }).await.expect("cat");
+        id: "cat1".into(),
+        parent_id: None,
+        name: "Electronics".into(),
+        slug: "electronics".into(),
+        path: "/electronics".into(),
+        position: 0,
+    })
+    .await
+    .expect("cat");
     tax.create_attribute(&Attribute {
-        id: "color".into(), category_id: "cat1".into(), name: "Color".into(),
-        data_type: DataType::Enum, unit: None, is_required: false, position: 0,
-    }).await.expect("attr");
+        id: "color".into(),
+        category_id: "cat1".into(),
+        name: "Color".into(),
+        data_type: DataType::Enum,
+        unit: None,
+        is_required: false,
+        position: 0,
+    })
+    .await
+    .expect("attr");
 
     setup_published_product(&t, &proj, "p1", "Blue Headphones", 1500).await;
     setup_published_product(&t, &proj, "p2", "Red Headphones", 1200).await;
@@ -440,11 +613,20 @@ async fn search_checkbox_or_filter() {
 
     // Set color attributes
     for (pid, color, ev_id) in [("p1", "blue", 10), ("p2", "red", 11), ("p3", "green", 12)] {
-        proj.dispatch("product", &event(ev_id, "ProductUpdated", serde_json::json!({
-            "id": pid, "reason": "attribute_value_set",
-            "attribute_id": "color", "data_type": "enum",
-            "val_text": color, "val_num": null, "updated_at": ev_id,
-        }))).await.expect("attr set");
+        proj.dispatch(
+            "product",
+            &event(
+                ev_id,
+                "ProductUpdated",
+                serde_json::json!({
+                    "id": pid, "reason": "attribute_value_set",
+                    "attribute_id": "color", "data_type": "enum",
+                    "val_text": color, "val_num": null, "updated_at": ev_id,
+                }),
+            ),
+        )
+        .await
+        .expect("attr set");
     }
 
     let result = search
@@ -475,7 +657,10 @@ async fn search_sort_price_asc() {
     setup_published_product(&t, &proj, "p3", "C", 200).await;
 
     let result = search
-        .search(&SearchQuery { sort: Sort::PriceAsc, ..default_query() })
+        .search(&SearchQuery {
+            sort: Sort::PriceAsc,
+            ..default_query()
+        })
         .await
         .expect("search");
 
@@ -492,13 +677,23 @@ async fn search_pagination() {
     let search = SqliteCatalogSearch::new(t.db.clone());
 
     for i in 1u32..=5 {
-        setup_published_product(&t, &proj, &format!("p{i}"), &format!("Product {i}"), i as i64 * 100).await;
+        setup_published_product(
+            &t,
+            &proj,
+            &format!("p{i}"),
+            &format!("Product {i}"),
+            i as i64 * 100,
+        )
+        .await;
     }
 
     let page1 = search
         .search(&SearchQuery {
             sort: Sort::PriceAsc,
-            page: Pagination { offset: 0, limit: 2 },
+            page: Pagination {
+                offset: 0,
+                limit: 2,
+            },
             ..default_query()
         })
         .await
@@ -507,7 +702,10 @@ async fn search_pagination() {
     let page2 = search
         .search(&SearchQuery {
             sort: Sort::PriceAsc,
-            page: Pagination { offset: 2, limit: 2 },
+            page: Pagination {
+                offset: 2,
+                limit: 2,
+            },
             ..default_query()
         })
         .await
@@ -553,6 +751,9 @@ async fn upsert_and_remove_direct_api() {
 
     search.remove("p1").await.expect("remove");
 
-    let result2 = search.search(&default_query()).await.expect("search after remove");
+    let result2 = search
+        .search(&default_query())
+        .await
+        .expect("search after remove");
     assert_eq!(result2.total, 0);
 }

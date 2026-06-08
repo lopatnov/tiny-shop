@@ -48,7 +48,11 @@ impl CatalogSearch for SqliteCatalogSearch {
                 .await
                 .map_err(be)?;
                 if ids.is_empty() {
-                    return Ok(SearchResult { items: vec![], total: 0, facets: vec![] });
+                    return Ok(SearchResult {
+                        items: vec![],
+                        total: 0,
+                        facets: vec![],
+                    });
                 }
                 Some(ids)
             }
@@ -58,7 +62,11 @@ impl CatalogSearch for SqliteCatalogSearch {
 
         let total = count_results(&self.db, query, &fts_ids).await?;
         if total == 0 {
-            return Ok(SearchResult { items: vec![], total: 0, facets: vec![] });
+            return Ok(SearchResult {
+                items: vec![],
+                total: 0,
+                facets: vec![],
+            });
         }
 
         let order = match query.sort {
@@ -170,11 +178,7 @@ impl CatalogSearch for SqliteCatalogSearch {
 // -----------------------------------------------------------------
 
 /// Добавляет WHERE-условия в QueryBuilder на основе SearchQuery и (опц.) FTS-результатов.
-fn push_where(
-    qb: &mut QueryBuilder<Sqlite>,
-    query: &SearchQuery,
-    fts_ids: &Option<Vec<String>>,
-) {
+fn push_where(qb: &mut QueryBuilder<Sqlite>, query: &SearchQuery, fts_ids: &Option<Vec<String>>) {
     qb.push(" WHERE pp.status = 'published'");
 
     if let Some(ids) = fts_ids {
@@ -202,7 +206,10 @@ fn push_where(
 
 fn push_filter_cond(qb: &mut QueryBuilder<Sqlite>, f: &FilterCond) {
     match f {
-        FilterCond::RangePrice { min_minor, max_minor } => {
+        FilterCond::RangePrice {
+            min_minor,
+            max_minor,
+        } => {
             if let Some(min) = min_minor {
                 qb.push(" AND pp.price_minor >= ");
                 qb.push_bind(*min);
@@ -212,7 +219,10 @@ fn push_filter_cond(qb: &mut QueryBuilder<Sqlite>, f: &FilterCond) {
                 qb.push_bind(*max);
             }
         }
-        FilterCond::CheckboxOr { attribute_id, values } if !values.is_empty() => {
+        FilterCond::CheckboxOr {
+            attribute_id,
+            values,
+        } if !values.is_empty() => {
             qb.push(
                 " AND pp.id IN (SELECT product_id FROM product_attr_index \
                  WHERE attribute_id = ",
@@ -225,7 +235,10 @@ fn push_filter_cond(qb: &mut QueryBuilder<Sqlite>, f: &FilterCond) {
             }
             qb.push("))");
         }
-        FilterCond::EnumAnd { attribute_id, values } if !values.is_empty() => {
+        FilterCond::EnumAnd {
+            attribute_id,
+            values,
+        } if !values.is_empty() => {
             let n = values.len() as i64;
             qb.push(
                 " AND pp.id IN (SELECT product_id FROM product_attr_index \
@@ -241,7 +254,10 @@ fn push_filter_cond(qb: &mut QueryBuilder<Sqlite>, f: &FilterCond) {
             qb.push_bind(n);
             qb.push(")");
         }
-        FilterCond::Number { attribute_id, value } => {
+        FilterCond::Number {
+            attribute_id,
+            value,
+        } => {
             qb.push(
                 " AND pp.id IN (SELECT product_id FROM product_attr_index \
                  WHERE attribute_id = ",
@@ -251,7 +267,11 @@ fn push_filter_cond(qb: &mut QueryBuilder<Sqlite>, f: &FilterCond) {
             qb.push_bind(*value);
             qb.push(")");
         }
-        FilterCond::RangeGeneric { attribute_id, min, max } => {
+        FilterCond::RangeGeneric {
+            attribute_id,
+            min,
+            max,
+        } => {
             qb.push(
                 " AND pp.id IN (SELECT product_id FROM product_attr_index \
                  WHERE attribute_id = ",

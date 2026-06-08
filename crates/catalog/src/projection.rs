@@ -28,8 +28,16 @@ impl CatalogProjection {
 }
 
 impl relay::Dispatcher for CatalogProjection {
-    async fn dispatch(&self, _source: &str, event: &DomainEvent) -> Result<(), relay::DispatchError> {
-        let mut tx = self.db.writer.begin().await
+    async fn dispatch(
+        &self,
+        _source: &str,
+        event: &DomainEvent,
+    ) -> Result<(), relay::DispatchError> {
+        let mut tx = self
+            .db
+            .writer
+            .begin()
+            .await
             .map_err(|e| relay::DispatchError(e.to_string()))?;
 
         let result = match event.event_type.as_str() {
@@ -46,7 +54,8 @@ impl relay::Dispatcher for CatalogProjection {
             return Err(relay::DispatchError(e.to_string()));
         }
 
-        tx.commit().await
+        tx.commit()
+            .await
             .map_err(|e| relay::DispatchError(e.to_string()))?;
         Ok(())
     }
@@ -93,12 +102,11 @@ async fn apply_updated(
         "attribute_value_set" => {
             let attribute_id = str_val(p, "attribute_id");
             // category_id is looked up within the same catalog.db — not a cross-context read.
-            let category_id: Option<String> = sqlx::query_scalar(
-                "SELECT category_id FROM attributes WHERE id = ?",
-            )
-            .bind(&attribute_id)
-            .fetch_optional(&mut **tx)
-            .await?;
+            let category_id: Option<String> =
+                sqlx::query_scalar("SELECT category_id FROM attributes WHERE id = ?")
+                    .bind(&attribute_id)
+                    .fetch_optional(&mut **tx)
+                    .await?;
 
             if let Some(cat_id) = category_id {
                 let val_text: Option<String> = p["val_text"].as_str().map(str::to_string);
@@ -124,13 +132,11 @@ async fn apply_updated(
         }
         "attribute_value_cleared" => {
             let attribute_id = str_val(p, "attribute_id");
-            sqlx::query(
-                "DELETE FROM product_attr_index WHERE product_id = ? AND attribute_id = ?",
-            )
-            .bind(&id)
-            .bind(&attribute_id)
-            .execute(&mut **tx)
-            .await?;
+            sqlx::query("DELETE FROM product_attr_index WHERE product_id = ? AND attribute_id = ?")
+                .bind(&id)
+                .bind(&attribute_id)
+                .execute(&mut **tx)
+                .await?;
 
             upsert_fts(tx, &id).await?;
         }
@@ -221,7 +227,10 @@ async fn upsert_fts(
         .await?;
 
     let (title, description) = match row {
-        Some(r) => (r.get::<String, _>("title"), r.get::<String, _>("description")),
+        Some(r) => (
+            r.get::<String, _>("title"),
+            r.get::<String, _>("description"),
+        ),
         None => return Ok(()),
     };
 
@@ -254,12 +263,11 @@ async fn delete_fts(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     product_id: &str,
 ) -> Result<(), sqlx::Error> {
-    let rowid: Option<i64> = sqlx::query_scalar(
-        "SELECT rowid FROM product_fts WHERE product_id = ? LIMIT 1",
-    )
-    .bind(product_id)
-    .fetch_optional(&mut **tx)
-    .await?;
+    let rowid: Option<i64> =
+        sqlx::query_scalar("SELECT rowid FROM product_fts WHERE product_id = ? LIMIT 1")
+            .bind(product_id)
+            .fetch_optional(&mut **tx)
+            .await?;
 
     if let Some(rid) = rowid {
         sqlx::query("DELETE FROM product_fts WHERE rowid = ?")
