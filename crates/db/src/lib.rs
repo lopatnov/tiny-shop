@@ -15,6 +15,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 pub mod inbox;
 pub mod outbox;
 pub mod relay;
+pub mod repository;
 
 pub use shared::{DomainEvent, NewEvent};
 

@@ -55,3 +55,73 @@ pub fn now_ms() -> i64 {
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
 }
+
+// ---------------------------------------------------------------------------
+// Пагинация и страница результатов (общие для listing/поиска/Repository).
+// ---------------------------------------------------------------------------
+
+/// Параметры пагинации (вход запроса).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pagination {
+    pub offset: u32,
+    pub limit: u32,
+}
+
+impl Default for Pagination {
+    fn default() -> Self {
+        Self {
+            offset: 0,
+            limit: 24,
+        }
+    }
+}
+
+/// Страница результатов произвольного типа.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Page<T> {
+    pub items: Vec<T>,
+    pub total: u64,
+    pub page: Pagination,
+}
+
+// ---------------------------------------------------------------------------
+// Порт Scanner — опциональный антивирус для загрузок (design-1a.md §4).
+// По умолчанию NoopScanner (всегда Clean). Реальные адаптеры — 1c+.
+// ---------------------------------------------------------------------------
+
+/// Ссылка на проверяемый ассет (файл/объект хранилища).
+#[derive(Debug, Clone)]
+pub struct AssetRef {
+    pub path: String,
+}
+
+/// Вердикт проверки.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verdict {
+    Clean,
+    Infected(String),
+    Skipped,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ScanError {
+    #[error("scanner backend error: {0}")]
+    Backend(String),
+}
+
+/// Порт антивируса. Нативный async-fn-in-trait (без `async-trait`).
+pub trait Scanner {
+    fn scan(
+        &self,
+        asset: &AssetRef,
+    ) -> impl std::future::Future<Output = Result<Verdict, ScanError>> + Send;
+}
+
+/// Заглушка по умолчанию: скан выключен → всегда `Clean`.
+pub struct NoopScanner;
+
+impl Scanner for NoopScanner {
+    async fn scan(&self, _asset: &AssetRef) -> Result<Verdict, ScanError> {
+        Ok(Verdict::Clean)
+    }
+}

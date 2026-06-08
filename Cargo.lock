@@ -67,7 +67,11 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "catalog"
-version = "0.1.0"
+version = "0.0.1"
+dependencies = [
+ "shared",
+ "thiserror",
+]
 
 [[package]]
 name = "cc"
@@ -730,7 +734,10 @@ dependencies = [
 
 [[package]]
 name = "payments"
-version = "0.1.0"
+version = "0.0.1"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "pem-rfc7468"
