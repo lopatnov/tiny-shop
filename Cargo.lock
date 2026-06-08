@@ -826,6 +826,15 @@ dependencies = [
 [[package]]
 name = "product"
 version = "0.0.1"
+dependencies = [
+ "db",
+ "serde",
+ "serde_json",
+ "shared",
+ "sqlx",
+ "thiserror",
+ "tokio",
+]
 
 [[package]]
 name = "quote"
