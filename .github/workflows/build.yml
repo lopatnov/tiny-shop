@@ -1,0 +1,58 @@
+name: Build
+
+# Минимальные права по умолчанию (least privilege).
+permissions:
+    contents: read
+
+# Отменять устаревшие прогоны при новом push в ту же ветку (экономия CI).
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        types: [opened, synchronize, reopened]
+jobs:
+    sonarqube:
+        name: SonarQube
+        runs-on: ubuntu-latest
+        # SONAR_TOKEN на уровне job — чтобы проверить его наличие в `if` ниже.
+        env:
+            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        steps:
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  fetch-depth: 0 # full history для blame / new-code detection
+                  persist-credentials: false
+            - name: SonarQube Scan
+              # Не блокировать CI, если секрет не настроен (например, в форках/контрибьюторских PR).
+              if: ${{ env.SONAR_TOKEN != '' }}
+              uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
+              env:
+                  SONAR_HOST_URL: https://sonarcloud.io
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    rust:
+        name: Rust CI
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  persist-credentials: false
+            # TODO(devops/security): запинить по SHA (как checkout). Сейчас теги — dependabot обновит.
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: clippy, rustfmt
+            - name: Cache cargo
+              uses: Swatinem/rust-cache@v2
+            - name: Format check
+              run: cargo fmt --all --check
+            - name: Clippy (warnings as errors)
+              run: cargo clippy --workspace --all-targets -- -D warnings
+            - name: Build
+              run: cargo build --workspace
+            - name: Test
+              run: cargo test --workspace
