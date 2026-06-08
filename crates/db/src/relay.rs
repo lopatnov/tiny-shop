@@ -31,9 +31,17 @@ pub struct RelaySource {
     pub pool: SqlitePool,
 }
 
+/// Сколько раз пытаемся доставить событие, прежде чем dead-letter (защита от «ядовитой пилюли»).
+pub const MAX_DISPATCH_ATTEMPTS: i64 = 10;
+
 /// Один проход relay по всем источникам. Возвращает число доставленных событий.
-/// При ошибке доставки события прекращает обработку этого источника (сохраняет порядок,
-/// не теряет последующие — они уйдут на следующем проходе).
+///
+/// Обработка ошибок доставки:
+/// - **транзиентная** (attempts < [`MAX_DISPATCH_ATTEMPTS`]): фиксируем попытку и прекращаем
+///   обработку этого источника на проходе — сохраняем порядок, повторим на следующем тике;
+/// - **перманентная** («ядовитая пилюля», attempts ≥ лимита): логируем критично и **dead-letter**
+///   (помечаем published с сохранённым `last_error`), чтобы не блокировать очередь навсегда
+///   (head-of-line blocking).
 pub async fn relay_tick<D: Dispatcher>(
     sources: &[RelaySource],
     dispatcher: &D,
@@ -47,9 +55,17 @@ pub async fn relay_tick<D: Dispatcher>(
             match dispatcher.dispatch(&src.name, ev).await {
                 Ok(()) => delivered.push(ev.id),
                 Err(e) => {
-                    tracing::warn!(source = %src.name, id = ev.id, error = %e,
-                        "relay dispatch failed; will retry next tick");
-                    break;
+                    let attempts = outbox::record_failure(&src.pool, ev.id, &e.to_string()).await?;
+                    if attempts >= MAX_DISPATCH_ATTEMPTS {
+                        tracing::error!(source = %src.name, id = ev.id, attempts, error = %e,
+                            "event dead-lettered after max attempts; skipping to unblock relay");
+                        outbox::mark_published(&src.pool, &[ev.id]).await?;
+                        // dead-letter: продолжаем со следующим событием, очередь не блокируется
+                    } else {
+                        tracing::warn!(source = %src.name, id = ev.id, attempts, error = %e,
+                            "relay dispatch failed; will retry next tick");
+                        break; // транзиентная ошибка: сохраняем порядок, повтор на следующем тике
+                    }
                 }
             }
         }
@@ -61,13 +77,19 @@ pub async fn relay_tick<D: Dispatcher>(
     Ok(total)
 }
 
-/// Бесконечный цикл relay (для фоновой tokio-задачи). Ошибки прохода логируются, не фатальны.
+/// Бесконечный цикл relay (для фоновой tokio-задачи). Спим только в простое (нет событий),
+/// при наличии работы — `yield_now`, чтобы быстро разобрать накопившуюся очередь. Ошибки
+/// прохода логируются и не фатальны.
 pub async fn run_relay<D: Dispatcher>(sources: Vec<RelaySource>, dispatcher: D, poll: Duration) {
     loop {
-        if let Err(e) = relay_tick(&sources, &dispatcher, 100).await {
-            tracing::error!(error = %e, "relay tick failed");
+        match relay_tick(&sources, &dispatcher, 100).await {
+            Ok(0) => tokio::time::sleep(poll).await,
+            Ok(_) => tokio::task::yield_now().await,
+            Err(e) => {
+                tracing::error!(error = %e, "relay tick failed");
+                tokio::time::sleep(poll).await;
+            }
         }
-        tokio::time::sleep(poll).await;
     }
 }
 

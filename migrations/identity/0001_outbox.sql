@@ -6,6 +6,8 @@ CREATE TABLE outbox (
   event_type   TEXT    NOT NULL,
   payload      TEXT    NOT NULL,
   created_at   INTEGER NOT NULL,
-  published_at INTEGER
+  published_at INTEGER,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  last_error   TEXT
 );
 CREATE INDEX outbox_unpublished ON outbox(id) WHERE published_at IS NULL;

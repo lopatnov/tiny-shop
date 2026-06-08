@@ -84,10 +84,11 @@ pub trait Payments {
     ) -> impl Future<Output = Result<RefundStatus, PaymentError>> + Send;
 
     /// Верификация и разбор вебхука провайдера (синхронно).
-    /// `headers` — пары (имя, значение), чтобы не тянуть HTTP-крейт в порт.
+    /// `headers` — пары (имя, значение) как `&str`, чтобы не тянуть HTTP-крейт в порт и не
+    /// заставлять вызывающую сторону аллоцировать `String` на каждый заголовок.
     fn parse_webhook(
         &self,
-        headers: &[(String, String)],
+        headers: &[(&str, &str)],
         body: &[u8],
     ) -> Result<PaymentEvent, PaymentError>;
 }

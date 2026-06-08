@@ -127,3 +127,39 @@ async fn relay_dispatches_then_marks_published() {
         .unwrap();
     assert_eq!(n2, 0, "второй проход — пусто (idempotent at-least-once)");
 }
+
+struct AlwaysFailDispatcher;
+
+impl Dispatcher for AlwaysFailDispatcher {
+    async fn dispatch(&self, _source: &str, _event: &DomainEvent) -> Result<(), DispatchError> {
+        Err(DispatchError("boom".into()))
+    }
+}
+
+#[tokio::test]
+async fn relay_dead_letters_poison_pill() {
+    let t = temp_db("poison").await;
+    outbox::enqueue(
+        &t.db.writer,
+        &NewEvent::new("product", "p1", "Bad", json!({})),
+    )
+    .await
+    .unwrap();
+    let sources = vec![RelaySource {
+        name: "product".into(),
+        pool: t.db.writer.clone(),
+    }];
+
+    // Прогоняем тиков больше лимита попыток — событие должно быть dead-lettered, не блокируя очередь.
+    for _ in 0..=db::relay::MAX_DISPATCH_ATTEMPTS {
+        relay_tick(&sources, &AlwaysFailDispatcher, 100)
+            .await
+            .unwrap();
+    }
+
+    let pending = outbox::fetch_unpublished(&t.db.reader, 10).await.unwrap();
+    assert!(
+        pending.is_empty(),
+        "ядовитая пилюля должна быть dead-lettered (очередь разблокирована)"
+    );
+}

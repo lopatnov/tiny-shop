@@ -28,6 +28,11 @@ pub enum FilterCond {
         values: Vec<String>,
     },
     /// Точное число.
+    ///
+    /// NOTE: `f64` соответствует `val_num REAL` из EAV (design-1a.md §2). Точное сравнение
+    /// чисел с плавающей запятой ненадёжно — стратегия (сравнение с допуском / масштабированные
+    /// целые / `Decimal`) фиксируется в catalog-core (T1a-3/T1a-5) вместе с `architect`. Для
+    /// точных совпадений предпочтительны enum/checkbox-атрибуты, а не `Number`.
     Number { attribute_id: String, value: f64 },
     /// Диапазон по числовому атрибуту.
     RangeGeneric {

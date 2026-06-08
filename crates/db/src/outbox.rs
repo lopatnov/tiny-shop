@@ -54,6 +54,19 @@ pub async fn fetch_unpublished(pool: &SqlitePool, limit: u32) -> Result<Vec<Doma
     Ok(out)
 }
 
+/// Зафиксировать неудачную доставку события: увеличить `attempts`, сохранить `last_error`.
+/// Возвращает новое число попыток (для решения о dead-letter в relay).
+pub async fn record_failure(pool: &SqlitePool, id: i64, error: &str) -> Result<i64, DbError> {
+    let row = sqlx::query(
+        "UPDATE outbox SET attempts = attempts + 1, last_error = ? WHERE id = ? RETURNING attempts",
+    )
+    .bind(error)
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.get("attempts"))
+}
+
 /// Пометить события разосланными.
 pub async fn mark_published(pool: &SqlitePool, ids: &[i64]) -> Result<(), DbError> {
     if ids.is_empty() {
