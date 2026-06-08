@@ -44,7 +44,10 @@ async fn fresh_db() -> TempDb {
     let _ = std::fs::remove_file(&path);
     let db = open("bdd", &path).await.expect("open db");
     migrate_catalog(&db.writer).await.expect("migrate catalog");
-    TempDb { path, repo: TaxonomyRepo::new(db) }
+    TempDb {
+        path,
+        repo: TaxonomyRepo::new(db),
+    }
 }
 
 // ─── World ───────────────────────────────────────────────────────────────────
@@ -105,7 +108,13 @@ async fn create_root(world: &mut CatalogWorld, name: String, slug: String) {
     let id = format!("cat-{slug}");
     world.last_root_id.clone_from(&id);
     let cat = mk_root(&id, &name, &slug);
-    world.last_error = world.db.repo.create_category(&cat).await.err().map(|e| e.to_string());
+    world.last_error = world
+        .db
+        .repo
+        .create_category(&cat)
+        .await
+        .err()
+        .map(|e| e.to_string());
 }
 
 #[given(regex = r#"a root category "([^"]+)" with slug "([^"]+)" exists"#)]
@@ -113,7 +122,12 @@ async fn given_root(world: &mut CatalogWorld, name: String, slug: String) {
     let id = format!("cat-{slug}");
     world.last_root_id.clone_from(&id);
     let cat = mk_root(&id, &name, &slug);
-    world.db.repo.create_category(&cat).await.expect("setup: create root category");
+    world
+        .db
+        .repo
+        .create_category(&cat)
+        .await
+        .expect("setup: create root category");
 }
 
 #[when(regex = r#"I create a subcategory "([^"]+)" with slug "([^"]+)" under "([^"]+)""#)]
@@ -122,18 +136,34 @@ async fn create_sub(world: &mut CatalogWorld, name: String, slug: String, parent
     let parent_id = format!("cat-{parent_slug}");
     let id = format!("cat-{slug}");
     let cat = mk_sub(&id, &parent_id, &name, &slug, &parent_slug);
-    world.last_error = world.db.repo.create_category(&cat).await.err().map(|e| e.to_string());
+    world.last_error = world
+        .db
+        .repo
+        .create_category(&cat)
+        .await
+        .err()
+        .map(|e| e.to_string());
 }
 
 #[then(regex = r"the catalog root has (\d+) categor")]
 async fn root_count(world: &mut CatalogWorld, count: usize) {
-    let roots = world.db.repo.list_categories_by_parent(None, Lang::Uk).await.unwrap();
+    let roots = world
+        .db
+        .repo
+        .list_categories_by_parent(None, Lang::Uk)
+        .await
+        .unwrap();
     assert_eq!(roots.len(), count, "root category count");
 }
 
 #[then(regex = r#"the first root category is named "([^"]+)""#)]
 async fn first_root_named(world: &mut CatalogWorld, name: String) {
-    let roots = world.db.repo.list_categories_by_parent(None, Lang::Uk).await.unwrap();
+    let roots = world
+        .db
+        .repo
+        .list_categories_by_parent(None, Lang::Uk)
+        .await
+        .unwrap();
     assert!(!roots.is_empty(), "no root categories found");
     assert_eq!(roots[0].name, name);
 }
@@ -167,7 +197,11 @@ async fn child_named(world: &mut CatalogWorld, name: String) {
 
 #[when(regex = r#"I look up the category "([^"]+)" in (Ukrainian|Russian)"#)]
 async fn look_up(world: &mut CatalogWorld, slug: String, lang_str: String) {
-    let lang = if lang_str == "Russian" { Lang::Ru } else { Lang::Uk };
+    let lang = if lang_str == "Russian" {
+        Lang::Ru
+    } else {
+        Lang::Uk
+    };
     let path = format!("/{slug}");
     let cat = world
         .db
@@ -198,7 +232,13 @@ async fn resolved_name_eq(world: &mut CatalogWorld, expected: String) {
 #[when(regex = r#"I try to create another root category with slug "([^"]+)""#)]
 async fn try_dup_root(world: &mut CatalogWorld, slug: String) {
     let cat = mk_root(&format!("cat-dup-{slug}"), "Duplicate", &slug);
-    world.last_error = world.db.repo.create_category(&cat).await.err().map(|e| e.to_string());
+    world.last_error = world
+        .db
+        .repo
+        .create_category(&cat)
+        .await
+        .err()
+        .map(|e| e.to_string());
 }
 
 #[then("the operation fails")]
