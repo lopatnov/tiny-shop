@@ -298,14 +298,10 @@ async fn delete_fts_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     product_id: &str,
 ) -> Result<(), sqlx::Error> {
-    // Single statement: eliminates the two-query SELECT-then-DELETE round-trip.
-    sqlx::query(
-        "DELETE FROM product_fts \
-         WHERE rowid IN (SELECT rowid FROM product_fts WHERE product_id = ?)",
-    )
-    .bind(product_id)
-    .execute(&mut **tx)
-    .await?;
+    sqlx::query("DELETE FROM product_fts WHERE product_id = ?")
+        .bind(product_id)
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }
 

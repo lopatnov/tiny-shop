@@ -258,23 +258,14 @@ async fn upsert_fts(
     Ok(())
 }
 
-/// Удалить FTS-запись товара (поиск rowid через полный скан — допустимо для малого каталога).
 async fn delete_fts(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     product_id: &str,
 ) -> Result<(), sqlx::Error> {
-    let rowid: Option<i64> =
-        sqlx::query_scalar("SELECT rowid FROM product_fts WHERE product_id = ? LIMIT 1")
-            .bind(product_id)
-            .fetch_optional(&mut **tx)
-            .await?;
-
-    if let Some(rid) = rowid {
-        sqlx::query("DELETE FROM product_fts WHERE rowid = ?")
-            .bind(rid)
-            .execute(&mut **tx)
-            .await?;
-    }
+    sqlx::query("DELETE FROM product_fts WHERE product_id = ?")
+        .bind(product_id)
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }
 
