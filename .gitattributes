@@ -1,0 +1,21 @@
+# Normalize line endings to LF in the repo; checkout behavior is per-OS default
+* text=auto eol=lf
+
+# Force LF for Rust source and CI/config files regardless of OS
+*.rs text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.sql text eol=lf
+*.feature text eol=lf
+*.json text eol=lf
+*.lock text eol=lf
+
+# Binaries — no line-ending conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.wasm binary
