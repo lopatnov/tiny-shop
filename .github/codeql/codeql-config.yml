@@ -1,0 +1,11 @@
+# CodeQL configuration for tiny-shop.
+#
+# Excludes integration test directories from analysis.
+# Rationale: temp_db() helpers in crates/*/tests/ follow a standard Rust pattern
+# (fn takes a &str label, uses SystemTime+AtomicUsize for unique paths) that
+# triggers false positives for rust/path-injection — the label parameter is never
+# derived from external input. Confirmed false positives; alerts dismissed as
+# "used in tests". Excluding these paths prevents recurring noise on every PR
+# that touches test helpers.
+paths-ignore:
+  - "crates/*/tests"
