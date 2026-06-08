@@ -25,20 +25,16 @@ impl Drop for TempDb {
 }
 
 async fn temp_db(tag: &str) -> TempDb {
-    // CodeQL rust/path-injection: `tag` всегда строковый литерал из тестов, но статически
-    // это просто `&str`-параметр — явная проверка набора символов и документирует инвариант,
-    // и рвёт поток таинта (allow-list перед использованием в пути).
-    assert!(
-        !tag.is_empty() && tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'),
-        "tag must be a non-empty ascii alphanumeric/hyphen string: {tag:?}"
-    );
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
     let n = COUNTER.fetch_add(1, Ordering::SeqCst);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let path = std::env::temp_dir().join(format!("tinyshop-{tag}-{nanos}-{n}.db"));
+    // `tag` НЕ участвует в имени файла (CodeQL rust/path-injection: параметр статически
+    // считается недоверенным, хотя по факту всегда литерал из тестов) — уникальность и так
+    // гарантирована nanos+counter; `tag` используется только как метка соединения ниже.
+    let path = std::env::temp_dir().join(format!("tinyshop-{nanos}-{n}.db"));
     let _ = std::fs::remove_file(&path);
     // catalog-набор содержит и outbox, и inbox_processed — удобно для всех тестов.
     let db = open(tag, &path).await.expect("open");
