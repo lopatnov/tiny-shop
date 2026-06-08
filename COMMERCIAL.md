@@ -47,7 +47,7 @@ contributions do not limit the licensor's right to commercialize and relicense t
 
 ## Contact for a commercial license
 
-`<add contact: email / form>`
+Oleksandr Lopatnov — oleksandr@lopatnov.cv.ua
 
 ---
 
