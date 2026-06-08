@@ -338,16 +338,15 @@ fn digital_config_from_row(row: SqliteRow) -> Result<DigitalConfig, ProductError
             field: "delivery_kind",
             value: delivery_raw.clone(),
         })?;
-    let license_raw: Option<String> = row.get("license_kind");
-    let license_kind = match license_raw {
-        Some(raw) => Some(
+    let license_kind = row
+        .get::<Option<String>, _>("license_kind")
+        .map(|raw| {
             LicenseKind::parse(&raw).ok_or_else(|| ProductError::InvalidEnum {
                 field: "license_kind",
-                value: raw.clone(),
-            })?,
-        ),
-        None => None,
-    };
+                value: raw,
+            })
+        })
+        .transpose()?;
     Ok(DigitalConfig {
         product_id: row.get("product_id"),
         delivery_kind,

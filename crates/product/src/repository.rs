@@ -184,6 +184,9 @@ impl ProductRepo {
             field: "status",
             value: from_raw.clone(),
         })?;
+        if from == to {
+            return Ok(());
+        }
 
         let now = now_ms();
         sqlx::query("UPDATE products SET status = ?, updated_at = ? WHERE id = ?")
@@ -222,27 +225,19 @@ impl ProductRepo {
     pub async fn delete_product(&self, id: &str) -> Result<(), ProductError> {
         let mut tx = self.db.writer.begin().await?;
 
-        let variant_ids: Vec<String> =
-            sqlx::query("SELECT id FROM digital_variant WHERE product_id = ?")
-                .bind(id)
-                .fetch_all(&mut *tx)
-                .await?
-                .into_iter()
-                .map(|r| r.get::<String, _>("id"))
-                .collect();
-
         sqlx::query("DELETE FROM translations WHERE entity_type = ? AND entity_id = ?")
             .bind(entity_types::PRODUCT)
             .bind(id)
             .execute(&mut *tx)
             .await?;
-        for variant_id in &variant_ids {
-            sqlx::query("DELETE FROM translations WHERE entity_type = ? AND entity_id = ?")
-                .bind(entity_types::DIGITAL_VARIANT)
-                .bind(variant_id)
-                .execute(&mut *tx)
-                .await?;
-        }
+        sqlx::query(
+            "DELETE FROM translations WHERE entity_type = ? AND entity_id IN \
+             (SELECT id FROM digital_variant WHERE product_id = ?)",
+        )
+        .bind(entity_types::DIGITAL_VARIANT)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
 
         let res = sqlx::query("DELETE FROM products WHERE id = ?")
             .bind(id)

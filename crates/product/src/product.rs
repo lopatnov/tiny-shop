@@ -125,40 +125,11 @@ impl MediaKind {
     }
 }
 
-/// Тип значения атрибута товара (типизированный EAV, design-1a.md §3).
-///
-/// Локальная копия `catalog::DataType` — иначе появилась бы cross-crate зависимость
-/// product → catalog, которой быть не должно (контексты изолированы, связь — события).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DataType {
-    String,
-    Number,
-    Enum,
-    Bool,
-}
-
-impl DataType {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            DataType::String => "string",
-            DataType::Number => "number",
-            DataType::Enum => "enum",
-            DataType::Bool => "bool",
-        }
-    }
-
-    /// Разбор значения колонки `data_type`. `None` — неизвестное значение (БД хранит
-    /// каноничные строки под CHECK-ограничением, но парсер не должен паниковать).
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "string" => Some(DataType::String),
-            "number" => Some(DataType::Number),
-            "enum" => Some(DataType::Enum),
-            "bool" => Some(DataType::Bool),
-            _ => None,
-        }
-    }
-}
+/// Тип значения атрибута товара (типизированный EAV, design-1a.md §3) — общий технический
+/// value-type, см. [`shared::DataType`] (вынесен туда из дублировавшихся локальных копий
+/// в `catalog`/`product`; это не доменная сущность контекста, изоляция bounded contexts
+/// не нарушена).
+pub use shared::DataType;
 
 /// Товар продавца — единица каталога/витрины (истина о товаре принадлежит продавцу).
 #[derive(Debug, Clone, PartialEq)]
