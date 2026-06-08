@@ -102,6 +102,43 @@ pub struct Page<T> {
     pub page: Pagination,
 }
 
+/// Тип значения атрибута (типизированный EAV, design-1a.md §2/§3).
+///
+/// Общий для контекстов `catalog` и `product` — это техническое value-type-перечисление
+/// (не доменная сущность контекста), поэтому его совместное использование не нарушает
+/// изоляцию bounded contexts. Жил отдельными копиями в обоих крейтах — Sonar справедливо
+/// отметил буквальное дублирование кода; вынесен сюда (Простота, DRY).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataType {
+    String,
+    Number,
+    Enum,
+    Bool,
+}
+
+impl DataType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DataType::String => "string",
+            DataType::Number => "number",
+            DataType::Enum => "enum",
+            DataType::Bool => "bool",
+        }
+    }
+
+    /// Разбор значения колонки `data_type`. `None` — неизвестное значение (БД хранит
+    /// каноничные строки под CHECK-ограничением, но парсер не должен паниковать).
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "string" => Some(DataType::String),
+            "number" => Some(DataType::Number),
+            "enum" => Some(DataType::Enum),
+            "bool" => Some(DataType::Bool),
+            _ => None,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Порт Scanner — опциональный антивирус для загрузок (design-1a.md §4).
 // По умолчанию NoopScanner (всегда Clean). Реальные адаптеры — 1c+.

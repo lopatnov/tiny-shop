@@ -31,7 +31,10 @@ async fn temp_db(tag: &str) -> TempDb {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let path = std::env::temp_dir().join(format!("tinyshop-{tag}-{nanos}-{n}.db"));
+    // `tag` НЕ участвует в имени файла (CodeQL rust/path-injection: параметр статически
+    // считается недоверенным, хотя по факту всегда литерал из тестов) — уникальность и так
+    // гарантирована nanos+counter; `tag` используется только как метка соединения ниже.
+    let path = std::env::temp_dir().join(format!("tinyshop-{nanos}-{n}.db"));
     let _ = std::fs::remove_file(&path);
     // catalog-набор содержит и outbox, и inbox_processed — удобно для всех тестов.
     let db = open(tag, &path).await.expect("open");

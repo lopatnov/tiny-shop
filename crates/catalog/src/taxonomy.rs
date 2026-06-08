@@ -33,37 +33,9 @@ pub struct Category {
     pub position: i64,
 }
 
-/// Тип значения атрибута (типизированный EAV, design-1a.md §2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DataType {
-    String,
-    Number,
-    Enum,
-    Bool,
-}
-
-impl DataType {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            DataType::String => "string",
-            DataType::Number => "number",
-            DataType::Enum => "enum",
-            DataType::Bool => "bool",
-        }
-    }
-
-    /// Разбор значения колонки `data_type`. `None` — неизвестное значение (БД хранит
-    /// каноничные строки под CHECK-ограничением, но парсер не должен паниковать).
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "string" => Some(DataType::String),
-            "number" => Some(DataType::Number),
-            "enum" => Some(DataType::Enum),
-            "bool" => Some(DataType::Bool),
-            _ => None,
-        }
-    }
-}
+/// Тип значения атрибута (типизированный EAV, design-1a.md §2) — общий для контекстов,
+/// см. [`shared::DataType`] (вынесен туда из-за буквального дублирования с `product`).
+pub use shared::DataType;
 
 /// Атрибут категории.
 #[derive(Debug, Clone, PartialEq, Eq)]
