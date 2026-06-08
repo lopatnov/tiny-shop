@@ -27,6 +27,13 @@ impl Drop for TempDb {
 }
 
 async fn temp_db(tag: &str) -> TempDb {
+    // CodeQL rust/path-injection: `tag` всегда строковый литерал из тестов, но статически
+    // это просто `&str`-параметр — явная проверка набора символов и документирует инвариант,
+    // и рвёт поток таинта (allow-list перед использованием в пути).
+    assert!(
+        !tag.is_empty() && tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'),
+        "tag must be a non-empty ascii alphanumeric/hyphen string: {tag:?}"
+    );
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
     let n = COUNTER.fetch_add(1, Ordering::SeqCst);
     let nanos = std::time::SystemTime::now()
