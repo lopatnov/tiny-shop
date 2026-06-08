@@ -7,4 +7,9 @@ publish = false
 
 [dependencies]
 shared = { workspace = true }
+db = { workspace = true }
+sqlx = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
