@@ -28,12 +28,11 @@ jobs:
               with:
                   persist-credentials: false
             - name: Install Rust toolchain
-              # TODO(devops/security): запинить по SHA. Сейчас тег — dependabot обновит.
-              uses: dtolnay/rust-toolchain@stable
+              uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
               with:
                   components: clippy
             - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
+              uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
             - name: Install SARIF tools
               run: cargo install clippy-sarif sarif-fmt
             - name: Run clippy (SARIF output)
@@ -46,7 +45,7 @@ jobs:
                     | sarif-fmt
               continue-on-error: true
             - name: Upload SARIF to GitHub Advanced Security
-              uses: github/codeql-action/upload-sarif@v3
+              uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
               with:
                   sarif_file: rust-clippy-results.sarif
                   wait-for-processing: true
