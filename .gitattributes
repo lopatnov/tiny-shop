@@ -1,4 +1,4 @@
-# Normalize line endings to LF in the repo; checkout behavior is per-OS default
+# Normalize line endings to LF in the repo and force LF on checkout
 * text=auto eol=lf
 
 # Force LF for Rust source and CI/config files regardless of OS
