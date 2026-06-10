@@ -25,7 +25,7 @@ pub struct Product<'a> {
     pub type_: &'static str,
     pub name: &'a str,
     pub description: &'a str,
-    pub image: Option<&'a str>,
+    pub image: Option<String>,
     pub offers: Offer<'a>,
 }
 
@@ -49,8 +49,21 @@ pub struct BreadcrumbList {
 
 /// Перевести цену в минорных единицах (копейки) в строку гривен без `f64`
 /// (целочисленная арифметика — без погрешности округления).
+///
+/// Знак форматируется отдельно, а деление/остаток берутся от модуля — иначе
+/// для отрицательных `price_minor` Rust даёт некорректные строки вида `-1.-50`
+/// (остаток от деления отрицательного числа в Rust тоже отрицательный).
 pub fn format_price_minor(price_minor: i64) -> String {
-    format!("{}.{:02}", price_minor / 100, price_minor % 100)
+    let sign = if price_minor < 0 { "-" } else { "" };
+    let abs = price_minor.unsigned_abs();
+    format!("{sign}{}.{:02}", abs / 100, abs % 100)
+}
+
+/// Построить абсолютный URL из `base_url` (без хвостового `/`) и пути,
+/// начинающегося с `/`. Schema.org/Rich Results требуют абсолютные URL
+/// в JSON-LD (изображения, элементы `BreadcrumbList`).
+pub fn absolute_url(base_url: &str, path: &str) -> String {
+    format!("{base_url}{path}")
 }
 
 /// Сериализовать значение в `<script type="application/ld+json">`.
@@ -65,5 +78,31 @@ pub fn jsonld_script<T: Serialize>(value: &T) -> Markup {
         script type="application/ld+json" {
             (PreEscaped(escaped))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_price_minor_positive() {
+        assert_eq!(format_price_minor(19999), "199.99");
+        assert_eq!(format_price_minor(5), "0.05");
+        assert_eq!(format_price_minor(0), "0.00");
+    }
+
+    #[test]
+    fn format_price_minor_negative() {
+        assert_eq!(format_price_minor(-19999), "-199.99");
+        assert_eq!(format_price_minor(-5), "-0.05");
+    }
+
+    #[test]
+    fn absolute_url_joins_base_and_path() {
+        assert_eq!(
+            absolute_url("http://127.0.0.1:8080", "/p/blue-widget"),
+            "http://127.0.0.1:8080/p/blue-widget"
+        );
     }
 }

@@ -7,7 +7,7 @@ use maud::html;
 
 use crate::AppState;
 use crate::error::WebError;
-use crate::jsonld::{self, BreadcrumbList, ListItem, Offer, Product, jsonld_script};
+use crate::jsonld::{self, BreadcrumbList, ListItem, Offer, Product, absolute_url, jsonld_script};
 use crate::view::breadcrumb::breadcrumb_nav;
 use crate::view::layout::page_shell;
 
@@ -49,7 +49,10 @@ async fn render(state: &AppState, slug: &str) -> Result<String, WebError> {
         type_: "Product",
         name: &card.title,
         description: &card.description,
-        image: card.thumb.as_deref(),
+        image: card
+            .thumb
+            .as_deref()
+            .map(|thumb| absolute_url(&state.base_url, thumb)),
         offers: Offer {
             type_: "Offer",
             price: price.clone(),
@@ -65,11 +68,14 @@ async fn render(state: &AppState, slug: &str) -> Result<String, WebError> {
         item_list_element: crumbs
             .iter()
             .enumerate()
-            .map(|(i, (name, url))| ListItem {
-                type_: "ListItem",
-                position: (i + 1) as u32,
-                name: name.clone(),
-                item: url.clone().unwrap_or_else(|| format!("/p/{slug}")),
+            .map(|(i, (name, url))| {
+                let path = url.clone().unwrap_or_else(|| format!("/p/{slug}"));
+                ListItem {
+                    type_: "ListItem",
+                    position: (i + 1) as u32,
+                    name: name.clone(),
+                    item: absolute_url(&state.base_url, &path),
+                }
             })
             .collect(),
     };

@@ -124,6 +124,10 @@ async fn product_page_returns_html_with_jsonld() {
         body.contains("199.99"),
         "body should contain formatted price: {body}"
     );
+    assert!(
+        body.contains(r#""item":"http://127.0.0.1:8080/p/blue-widget""#),
+        "BreadcrumbList items should use absolute URLs from base_url: {body}"
+    );
 }
 
 #[tokio::test]
