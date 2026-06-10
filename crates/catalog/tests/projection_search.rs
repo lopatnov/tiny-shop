@@ -757,3 +757,80 @@ async fn upsert_and_remove_direct_api() {
         .expect("search after remove");
     assert_eq!(result2.total, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Тесты SqliteCatalogSearch::get_card_by_slug (T1a-6)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn get_card_by_slug_returns_published_product() {
+    let t = temp_db("card-by-slug-published").await;
+    let proj = CatalogProjection::new(t.db.clone());
+    let search = SqliteCatalogSearch::new(t.db.clone());
+
+    setup_published_product(&t, &proj, "p1", "Blue Widget", 1999).await;
+
+    let card = search
+        .get_card_by_slug("p1")
+        .await
+        .expect("query")
+        .expect("found");
+
+    assert_eq!(card.id, "p1");
+    assert_eq!(card.title, "Blue Widget");
+    assert_eq!(card.slug, "p1");
+    assert_eq!(card.price_minor, 1999);
+    assert_eq!(card.currency, "UAH");
+    assert_eq!(card.status, "published");
+}
+
+#[tokio::test]
+async fn get_card_by_slug_returns_none_for_draft_or_archived() {
+    let t = temp_db("card-by-slug-draft").await;
+    let proj = CatalogProjection::new(t.db.clone());
+    let search = SqliteCatalogSearch::new(t.db.clone());
+
+    // Draft product (never published)
+    proj.dispatch(
+        "product",
+        &event(
+            1,
+            "ProductCreated",
+            serde_json::json!({
+                "id": "p1", "seller_id": "s1", "title": "Draft Item", "slug": "draft-item",
+                "description": "", "price_minor": 100, "currency": "UAH",
+                "status": "draft", "created_at": 1, "updated_at": 1,
+            }),
+        ),
+    )
+    .await
+    .expect("created");
+
+    assert_eq!(
+        search.get_card_by_slug("draft-item").await.expect("query"),
+        None
+    );
+
+    // Archived product
+    setup_published_product(&t, &proj, "p2", "Archived Item", 200).await;
+    sqlx::query("UPDATE product_projection SET status = 'archived' WHERE id = 'p2'")
+        .execute(&t.db.writer)
+        .await
+        .expect("archive");
+
+    assert_eq!(search.get_card_by_slug("p2").await.expect("query"), None);
+}
+
+#[tokio::test]
+async fn get_card_by_slug_returns_none_for_unknown_slug() {
+    let t = temp_db("card-by-slug-unknown").await;
+    let search = SqliteCatalogSearch::new(t.db.clone());
+
+    assert_eq!(
+        search
+            .get_card_by_slug("does-not-exist")
+            .await
+            .expect("query"),
+        None
+    );
+}

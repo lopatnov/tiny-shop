@@ -11,10 +11,11 @@ use db::ContextDb;
 use sqlx::{QueryBuilder, Row, Sqlite};
 
 use crate::{
-    CatalogSearch, FilterCond, ProductCard, ProductDoc, SearchError, SearchQuery, SearchResult,
-    Sort,
+    CatalogSearch, FilterCond, ProductCard, ProductDoc, ProductView, SearchError, SearchQuery,
+    SearchResult, Sort,
 };
 
+#[derive(Clone)]
 pub struct SqliteCatalogSearch {
     db: ContextDb,
 }
@@ -22,6 +23,35 @@ pub struct SqliteCatalogSearch {
 impl SqliteCatalogSearch {
     pub fn new(db: ContextDb) -> Self {
         Self { db }
+    }
+
+    /// Полная карточка товара по slug для страницы `/p/{slug}` (T1a-6).
+    ///
+    /// Возвращает `None`, если slug не найден **или** товар не в статусе `published` —
+    /// непубликованные товары не отдаются как 200 (контракт SSR).
+    pub async fn get_card_by_slug(&self, slug: &str) -> Result<Option<ProductView>, SearchError> {
+        let row = sqlx::query(
+            "SELECT id, seller_id, title, slug, description, price_minor, currency, status, \
+                    category_id, thumb \
+             FROM product_projection WHERE slug = ? AND status = 'published'",
+        )
+        .bind(slug)
+        .fetch_optional(&self.db.reader)
+        .await
+        .map_err(be)?;
+
+        Ok(row.map(|r| ProductView {
+            id: r.get("id"),
+            seller_id: r.get("seller_id"),
+            title: r.get("title"),
+            slug: r.get("slug"),
+            description: r.get("description"),
+            price_minor: r.get("price_minor"),
+            currency: r.get("currency"),
+            status: r.get("status"),
+            category_id: r.get("category_id"),
+            thumb: r.get("thumb"),
+        }))
     }
 }
 
