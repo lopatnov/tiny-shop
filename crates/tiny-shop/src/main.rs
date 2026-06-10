@@ -27,11 +27,19 @@ async fn main() -> anyhow::Result<()> {
         name: "product".into(),
         pool: product_db.writer.clone(),
     }];
-    tokio::spawn(db::relay::run_relay(
+    // `run_relay` сама по себе работает вечно и логирует ошибки тиков; этот внешний
+    // `spawn` нужен только чтобы заметить аварийную панику задачи (иначе проекция каталога
+    // молча перестанет обновляться, а сервер продолжит отвечать устаревшими данными).
+    let relay_task = tokio::spawn(db::relay::run_relay(
         relay_sources,
         projection,
         Duration::from_millis(300),
     ));
+    tokio::spawn(async move {
+        if let Err(e) = relay_task.await {
+            tracing::error!(error = %e, "catalog projection relay task exited unexpectedly");
+        }
+    });
 
     let state = web::AppState {
         search: catalog::SqliteCatalogSearch::new(catalog_db.clone()),

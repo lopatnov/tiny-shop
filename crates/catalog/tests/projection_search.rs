@@ -768,17 +768,17 @@ async fn get_card_by_slug_returns_published_product() {
     let proj = CatalogProjection::new(t.db.clone());
     let search = SqliteCatalogSearch::new(t.db.clone());
 
-    setup_published_product(&t, &proj, "p1", "Blue Widget", 1999).await;
+    setup_published_product(&t, &proj, "p_1", "Blue Widget", 1999).await;
 
     let card = search
-        .get_card_by_slug("p1")
+        .get_card_by_slug("p-1")
         .await
         .expect("query")
         .expect("found");
 
-    assert_eq!(card.id, "p1");
+    assert_eq!(card.id, "p_1");
     assert_eq!(card.title, "Blue Widget");
-    assert_eq!(card.slug, "p1");
+    assert_eq!(card.slug, "p-1");
     assert_eq!(card.price_minor, 1999);
     assert_eq!(card.currency, "UAH");
     assert_eq!(card.status, "published");

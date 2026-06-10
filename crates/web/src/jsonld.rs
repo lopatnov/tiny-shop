@@ -39,6 +39,7 @@ pub struct ListItem {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BreadcrumbList {
     #[serde(rename = "@context")]
     pub context: &'static str,
@@ -72,7 +73,8 @@ pub fn absolute_url(base_url: &str, path: &str) -> String {
 /// (XSS через преждевременное закрытие тега скрипта пользовательскими данными,
 /// например названием товара).
 pub fn jsonld_script<T: Serialize>(value: &T) -> Markup {
-    let json = serde_json::to_string(value).unwrap_or_default();
+    let json = serde_json::to_string(value)
+        .expect("jsonld_script: serialization failed for JSON-LD payload");
     let escaped = json.replace('<', "\\u003c");
     html! {
         script type="application/ld+json" {

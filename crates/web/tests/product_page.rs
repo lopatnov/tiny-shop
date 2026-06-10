@@ -109,25 +109,46 @@ async fn product_page_returns_html_with_jsonld() {
 
     assert!(body.contains("<h1>"), "body should contain <h1>: {body}");
     assert!(
-        body.contains(r#"application/ld+json"#),
-        "body should contain JSON-LD script: {body}"
-    );
-    assert!(
-        body.contains(r#""@type":"Product""#),
-        "body should contain Product JSON-LD: {body}"
-    );
-    assert!(
-        body.contains(r#""@type":"BreadcrumbList""#),
-        "body should contain BreadcrumbList JSON-LD: {body}"
-    );
-    assert!(
         body.contains("199.99"),
         "body should contain formatted price: {body}"
     );
+
+    let jsonld = extract_jsonld_blocks(&body);
+
+    let product_ld = jsonld
+        .iter()
+        .find(|v| v["@type"] == "Product")
+        .expect("Product JSON-LD block");
+    assert_eq!(product_ld["offers"]["price"], "199.99");
+    assert_eq!(product_ld["offers"]["priceCurrency"], "UAH");
+
+    let breadcrumb_ld = jsonld
+        .iter()
+        .find(|v| v["@type"] == "BreadcrumbList")
+        .expect("BreadcrumbList JSON-LD block");
+    let items = breadcrumb_ld["itemListElement"]
+        .as_array()
+        .expect("itemListElement array");
     assert!(
-        body.contains(r#""item":"http://127.0.0.1:8080/p/blue-widget""#),
-        "BreadcrumbList items should use absolute URLs from base_url: {body}"
+        items
+            .iter()
+            .any(|item| item["item"] == "http://127.0.0.1:8080/p/blue-widget"),
+        "BreadcrumbList items should use absolute URLs from base_url: {breadcrumb_ld}"
     );
+}
+
+/// Извлечь и распарсить все блоки `<script type="application/ld+json">` из HTML-страницы.
+fn extract_jsonld_blocks(body: &str) -> Vec<serde_json::Value> {
+    let marker = r#"<script type="application/ld+json">"#;
+    let mut blocks = Vec::new();
+    let mut rest = body;
+    while let Some(start) = rest.find(marker) {
+        let after = &rest[start + marker.len()..];
+        let end = after.find("</script>").expect("script end");
+        blocks.push(serde_json::from_str(&after[..end]).expect("valid JSON-LD"));
+        rest = &after[end..];
+    }
+    blocks
 }
 
 #[tokio::test]
