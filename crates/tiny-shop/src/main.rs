@@ -1,3 +1,3 @@
 fn main() {
-    todo!("web server — Phase 1b")
+    println!("web server — Phase 1b (not implemented yet)");
 }

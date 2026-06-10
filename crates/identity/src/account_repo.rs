@@ -26,6 +26,8 @@ pub enum AccountError {
     HashError(String),
     #[error("task join: {0}")]
     Join(String),
+    #[error("invalid persisted role {role:?} for account {account_id}")]
+    InvalidRole { account_id: String, role: String },
 }
 
 impl From<db::DbError> for AccountError {
@@ -234,7 +236,14 @@ impl AccountRepo {
                 .bind(account_id)
                 .fetch_all(&self.db.reader)
                 .await?;
-        Ok(rows.iter().filter_map(|s| AccountRole::parse(s)).collect())
+        rows.into_iter()
+            .map(|role| {
+                AccountRole::parse(&role).ok_or_else(|| AccountError::InvalidRole {
+                    account_id: account_id.to_string(),
+                    role,
+                })
+            })
+            .collect()
     }
 }
 

@@ -13,6 +13,8 @@ use crate::session::{NewSession, Session, SessionToken};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {
+    #[error("session expiry must be in the future")]
+    InvalidExpiry,
     #[error("db: {0}")]
     Db(#[from] sqlx::Error),
 }
@@ -28,10 +30,16 @@ impl SessionRepo {
     }
 
     /// Generate a random token, store its BLAKE3 hash, return the raw token.
+    ///
+    /// Rejects `new.expires_at` that is already in the past — an immediately-dead
+    /// session would just be junk in the table (CodeRabbit review on PR #10).
     pub async fn create(&self, new: &NewSession) -> Result<SessionToken, SessionError> {
+        let ts = now_ms();
+        if new.expires_at <= ts {
+            return Err(SessionError::InvalidExpiry);
+        }
         let raw = generate_token();
         let token_hash = hash_token(&raw);
-        let ts = now_ms();
         sqlx::query(
             "INSERT INTO sessions \
              (token_hash, account_id, expires_at, user_agent, ip_addr, created_at) \

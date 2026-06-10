@@ -225,14 +225,14 @@ async fn create_and_verify_session() {
 }
 
 #[tokio::test]
-async fn expired_session_returns_none() {
+async fn create_with_past_expiry_is_rejected() {
     let t = temp_db("sess-expired").await;
     let acc_repo = AccountRepo::new(t.db.clone());
     let sess_repo = SessionRepo::new(t.db.clone());
 
     register_acc(&acc_repo, "acc-s2", "sess2@example.com").await;
 
-    let token = sess_repo
+    let err = sess_repo
         .create(&NewSession {
             account_id: "acc-s2".to_string(),
             expires_at: now_ms() - 1000,
@@ -240,7 +240,35 @@ async fn expired_session_returns_none() {
             ip_addr: None,
         })
         .await
+        .expect_err("should reject already-expired session");
+    assert!(matches!(err, identity::SessionError::InvalidExpiry));
+}
+
+#[tokio::test]
+async fn expired_session_returns_none() {
+    let t = temp_db("sess-expired-verify").await;
+    let acc_repo = AccountRepo::new(t.db.clone());
+    let sess_repo = SessionRepo::new(t.db.clone());
+
+    register_acc(&acc_repo, "acc-s2b", "sess2b@example.com").await;
+
+    let token = sess_repo
+        .create(&NewSession {
+            account_id: "acc-s2b".to_string(),
+            expires_at: now_ms() + 3_600_000,
+            user_agent: None,
+            ip_addr: None,
+        })
+        .await
         .expect("create");
+
+    // Backdate the session's expiry directly, simulating time passing.
+    sqlx::query("UPDATE sessions SET expires_at = ? WHERE token_hash = ?")
+        .bind(now_ms() - 1000)
+        .bind(blake3::hash(token.as_str().as_bytes()).to_string())
+        .execute(&t.db.writer)
+        .await
+        .expect("backdate expiry");
 
     let result = sess_repo.verify(token.as_str()).await.expect("no db error");
     assert!(result.is_none(), "expired session should not verify");

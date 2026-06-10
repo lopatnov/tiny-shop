@@ -25,7 +25,7 @@ impl AccountRole {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Account {
     pub id: String,
     pub email: String,
@@ -36,12 +36,38 @@ pub struct Account {
     pub roles: Vec<AccountRole>,
 }
 
+/// `Debug` redacts `pass_hash` so it never ends up in logs/panics.
+impl std::fmt::Debug for Account {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Account")
+            .field("id", &self.id)
+            .field("email", &self.email)
+            .field("pass_hash", &"<redacted>")
+            .field("email_verified_at", &self.email_verified_at)
+            .field("created_at", &self.created_at)
+            .field("updated_at", &self.updated_at)
+            .field("roles", &self.roles)
+            .finish()
+    }
+}
+
 /// Input for registering a new account. Password is plaintext — repo hashes it.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct NewAccount {
     pub id: String,
     pub email: String,
     pub password: String,
+}
+
+/// `Debug` redacts `password` so it never ends up in logs/panics.
+impl std::fmt::Debug for NewAccount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NewAccount")
+            .field("id", &self.id)
+            .field("email", &self.email)
+            .field("password", &"<redacted>")
+            .finish()
+    }
 }
 
 /// Seller profile linked to an account.
