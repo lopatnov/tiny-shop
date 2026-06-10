@@ -116,30 +116,36 @@ impl AccountRepo {
     }
 
     /// Verify email + password. Returns `Some(account)` on success, `None` on bad credentials.
+    ///
+    /// Always performs an Argon2id verification, even when the email is unknown (using a
+    /// fixed dummy hash), so response time does not leak whether an account exists
+    /// (timing attack / user enumeration — Gemini review on PR #10).
     pub async fn authenticate(
         &self,
         email: &str,
         password: &str,
     ) -> Result<Option<Account>, AccountError> {
-        let Some(account) = self.find_by_email(email).await? else {
-            return Ok(None);
-        };
-        let hash = account.pass_hash.clone();
+        let account = self.find_by_email(email).await?;
+        let hash = account
+            .as_ref()
+            .map(|a| a.pass_hash.clone())
+            .unwrap_or_else(|| DUMMY_HASH.to_string());
         let pw = password.to_owned();
         let ok = tokio::task::spawn_blocking(move || verify_password_sync(&hash, &pw))
             .await
             .map_err(|e| AccountError::Join(e.to_string()))?;
-        Ok(ok.then_some(account))
+        Ok(account.filter(|_| ok))
     }
 
-    /// Grant a role to an account (INSERT OR IGNORE — idempotent).
+    /// Grant a role to an account (idempotent; no-op if already granted).
     pub async fn grant_role(
         &self,
         account_id: &str,
         role: AccountRole,
     ) -> Result<(), AccountError> {
         sqlx::query(
-            "INSERT OR IGNORE INTO account_roles (account_id, role, granted_at) VALUES (?, ?, ?)",
+            "INSERT INTO account_roles (account_id, role, granted_at) VALUES (?, ?, ?) \
+             ON CONFLICT(account_id, role) DO NOTHING",
         )
         .bind(account_id)
         .bind(role.as_str())
@@ -174,8 +180,9 @@ impl AccountRepo {
             .execute(&mut *tx)
             .await?;
         sqlx::query(
-            "INSERT OR IGNORE INTO account_roles (account_id, role, granted_at) \
-             VALUES (?, 'seller', ?)",
+            "INSERT INTO account_roles (account_id, role, granted_at) \
+             VALUES (?, 'seller', ?) \
+             ON CONFLICT(account_id, role) DO NOTHING",
         )
         .bind(&new.account_id)
         .bind(ts)
@@ -265,9 +272,17 @@ async fn hash_password(password: String) -> Result<String, AccountError> {
         .map_err(AccountError::HashError)
 }
 
+/// PHC-format Argon2id hash of a fixed dummy password, with the same params as
+/// [`hash_password_sync`]. Used by `authenticate` to equalize timing for unknown emails.
+const DUMMY_HASH: &str =
+    "$argon2id$v=19$m=19456,t=2,p=1$Y2hvb2NvbGF0ZQ$MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI";
+
+/// `true` only for a UNIQUE violation on `accounts.email` (the only UNIQUE column besides
+/// the primary key `id`, which has its own integrity error path).
 fn is_unique_violation(e: &sqlx::Error) -> bool {
     if let sqlx::Error::Database(ref db_err) = *e {
-        return db_err.message().contains("UNIQUE constraint failed");
+        let msg = db_err.message();
+        return msg.contains("UNIQUE constraint failed") && msg.contains("accounts.email");
     }
     false
 }

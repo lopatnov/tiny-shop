@@ -9,7 +9,6 @@ CREATE TABLE accounts (
     created_at        INTEGER NOT NULL,
     updated_at        INTEGER NOT NULL
 );
-CREATE INDEX accounts_email ON accounts(email);
 
 CREATE TABLE account_roles (
     account_id TEXT    NOT NULL REFERENCES accounts(id),
