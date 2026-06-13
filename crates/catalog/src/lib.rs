@@ -89,6 +89,21 @@ pub struct ProductCard {
     pub thumb: Option<String>,
 }
 
+/// Полная карточка товара для страницы `/p/{slug}` (из проекции каталога).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProductView {
+    pub id: String,
+    pub seller_id: String,
+    pub title: String,
+    pub slug: String,
+    pub description: String,
+    pub price_minor: i64,
+    pub currency: String,
+    pub status: String,
+    pub category_id: Option<String>,
+    pub thumb: Option<String>,
+}
+
 /// Фасет: атрибут + (значение, число товаров). Точные счётчики — позже (Tantivy), см. §2.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Facet {
