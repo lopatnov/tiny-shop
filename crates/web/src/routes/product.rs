@@ -7,7 +7,7 @@ use maud::html;
 
 use crate::AppState;
 use crate::error::WebError;
-use crate::jsonld::{self, BreadcrumbList, ListItem, Offer, Product, absolute_url, jsonld_script};
+use crate::jsonld::{self, Offer, Product, absolute_url, breadcrumb_list_ld, jsonld_script};
 use crate::view::breadcrumb::breadcrumb_nav;
 use crate::view::layout::page_shell;
 
@@ -62,23 +62,7 @@ async fn render(state: &AppState, slug: &str) -> Result<String, WebError> {
         },
     };
 
-    let breadcrumb_ld = BreadcrumbList {
-        context: "https://schema.org",
-        type_: "BreadcrumbList",
-        item_list_element: crumbs
-            .iter()
-            .enumerate()
-            .map(|(i, (name, url))| {
-                let path = url.clone().unwrap_or_else(|| format!("/p/{slug}"));
-                ListItem {
-                    type_: "ListItem",
-                    position: (i + 1) as u32,
-                    name: name.clone(),
-                    item: absolute_url(&state.base_url, &path),
-                }
-            })
-            .collect(),
-    };
+    let breadcrumb_ld = breadcrumb_list_ld(&state.base_url, &crumbs, &format!("/p/{slug}"));
 
     let head_extra = html! {
         (jsonld_script(&product_ld))

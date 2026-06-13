@@ -12,8 +12,7 @@ use shared::Pagination;
 use crate::AppState;
 use crate::error::WebError;
 use crate::jsonld::{
-    self, BreadcrumbList, ItemList, ItemListElement, ItemProduct, ListItem, absolute_url,
-    jsonld_script,
+    self, ItemList, ItemListElement, ItemProduct, absolute_url, breadcrumb_list_ld, jsonld_script,
 };
 use crate::view::breadcrumb::breadcrumb_nav;
 use crate::view::layout::page_shell;
@@ -75,23 +74,7 @@ async fn render(state: &AppState, slug: &str, page: u32) -> Result<String, WebEr
         .await
         .map_err(|e| WebError::Internal(e.to_string()))?;
 
-    let breadcrumb_ld = BreadcrumbList {
-        context: "https://schema.org",
-        type_: "BreadcrumbList",
-        item_list_element: crumbs
-            .iter()
-            .enumerate()
-            .map(|(i, (name, url))| {
-                let path = url.clone().unwrap_or_else(|| format!("/c/{slug}"));
-                ListItem {
-                    type_: "ListItem",
-                    position: (i + 1) as u32,
-                    name: name.clone(),
-                    item: absolute_url(&state.base_url, &path),
-                }
-            })
-            .collect(),
-    };
+    let breadcrumb_ld = breadcrumb_list_ld(&state.base_url, &crumbs, &format!("/c/{slug}"));
 
     let item_list_ld = ItemList {
         context: "https://schema.org",

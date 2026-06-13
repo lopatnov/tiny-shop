@@ -94,6 +94,34 @@ pub fn format_price_minor(price_minor: i64) -> String {
     format!("{sign}{}.{:02}", abs / 100, abs % 100)
 }
 
+/// Построить `BreadcrumbList` из цепочки крошек `(название, URL)`.
+///
+/// Крошка без URL (текущая страница) получает `current_path` — используется и
+/// для `/p/{slug}`, и для `/c/{slug}`, чтобы избежать дублирования между маршрутами.
+pub fn breadcrumb_list_ld(
+    base_url: &str,
+    crumbs: &[(String, Option<String>)],
+    current_path: &str,
+) -> BreadcrumbList {
+    BreadcrumbList {
+        context: "https://schema.org",
+        type_: "BreadcrumbList",
+        item_list_element: crumbs
+            .iter()
+            .enumerate()
+            .map(|(i, (name, url))| {
+                let path = url.clone().unwrap_or_else(|| current_path.to_string());
+                ListItem {
+                    type_: "ListItem",
+                    position: (i + 1) as u32,
+                    name: name.clone(),
+                    item: absolute_url(base_url, &path),
+                }
+            })
+            .collect(),
+    }
+}
+
 /// Построить абсолютный URL из `base_url` (без хвостового `/`) и пути,
 /// начинающегося с `/`. Schema.org/Rich Results требуют абсолютные URL
 /// в JSON-LD (изображения, элементы `BreadcrumbList`).
