@@ -126,4 +126,8 @@ async fn home_page_without_categories_renders_placeholder() {
 
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("<h1>"), "body should contain <h1>: {body}");
+    assert!(
+        body.contains("Категорії з'являться тут найближчим часом."),
+        "body should contain empty-state placeholder: {body}"
+    );
 }
