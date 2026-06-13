@@ -35,4 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   JSON-LD (Schema.org); `catalog::TaxonomyRepo::get_category_by_slug` resolves a category by its
   slug (filters are not implemented yet — planned for chunk 3).
 
+### Security
+
+- **CodeQL: scan GitHub Actions workflows**: `.github/workflows/codeql.yml` now also analyzes
+  `.github/workflows/*.yml` with the `actions` CodeQL language (in addition to `rust`), catching
+  supply-chain issues such as unpinned third-party action tags (`actions/unpinned-tag`) on future
+  changes.
+
 [Unreleased]: https://github.com/lopatnov/tiny-shop/compare/93ebb8e...HEAD

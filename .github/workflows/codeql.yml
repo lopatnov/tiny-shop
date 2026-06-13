@@ -3,6 +3,12 @@ name: CodeQL
 # Явный CodeQL-воркфлоу с config-file — гарантирует применение .github/codeql/codeql-config.yml
 # (excludes crates/*/tests/**). Наличие этого файла отключает GitHub-авто-динамический воркфлоу,
 # устраняя рекуррентный false-positive storm на temp_db() в интеграционных тестах.
+#
+# Языки: rust (прикладной код) + actions (сканирование .github/workflows/*.yml на проблемы
+# вида unpinned-action-tag и др.). Оба языка используют build-mode: none — CodeQL для Rust
+# поддерживает только none (autobuild/manual недоступны), а extractor для actions не требует
+# сборки. category не задаётся явно: codeql-action генерирует её автоматически per-language
+# из matrix-переменной, что предотвращает конфликт/перезатирание SARIF между языками.
 
 permissions:
     contents: read
@@ -22,8 +28,12 @@ on:
 
 jobs:
     analyze:
-        name: Analyze (Rust)
+        name: Analyze (${{ matrix.language }})
         runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                language: [rust, actions]
         steps:
             - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
               with:
@@ -31,12 +41,9 @@ jobs:
             - name: Initialize CodeQL
               uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
               with:
-                  languages: rust
+                  languages: ${{ matrix.language }}
+                  build-mode: none
                   # Ключевая строка: явная ссылка на конфиг — исключает crates/*/tests/**
                   config-file: .github/codeql/codeql-config.yml
-            - name: Autobuild
-              uses: github/codeql-action/autobuild@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
             - name: Perform CodeQL Analysis
               uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
-              with:
-                  category: /language:rust
