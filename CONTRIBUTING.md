@@ -37,6 +37,8 @@ cargo fmt --all
 ## Pull requests
 
 - Keep PRs focused and reasonably small.
+- Use [Conventional Commits](https://www.conventionalcommits.org/) for commit messages and PR
+  titles (e.g., `feat:`, `fix:`, `docs:`).
 - Update documentation (`README.md`, `CHANGELOG.md`) when your change affects behavior, the
   build/run process, or the API/CLI surface.
 - CI must be green before merge.
