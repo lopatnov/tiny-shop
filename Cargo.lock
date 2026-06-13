@@ -2687,6 +2687,7 @@ dependencies = [
  "catalog",
  "db",
  "maud",
+ "percent-encoding",
  "serde",
  "serde_json",
  "shared",

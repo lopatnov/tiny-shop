@@ -1,12 +1,13 @@
-//! Интеграционный тест T1a-6 (chunk 2): `GET /c/{slug}` сквозь весь стек
-//! (БД → repo/search → HTML+JSON-LD).
+//! Интеграционный тест T1a-6 (chunk 2 + chunk 3): `GET /c/{slug}` сквозь весь стек
+//! (БД → repo/search → HTML+JSON-LD), включая фільтри (chunk 3).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use catalog::{
-    Attribute, CatalogProjection, Category, DataType, SqliteCatalogSearch, TaxonomyRepo,
+    Attribute, AttributeOption, CatalogProjection, Category, DataType, Filter, FilterType,
+    SqliteCatalogSearch, TaxonomyRepo,
 };
 use db::{ContextDb, migrate_catalog, open, relay::Dispatcher};
 use shared::{DomainEvent, now_ms};
@@ -88,6 +89,7 @@ async fn seed_category(tax: &TaxonomyRepo) -> (Category, Attribute) {
 }
 
 /// Создати + опублікувати товар, прив'язаний до категорії через атрибут.
+/// `val_text` — значення enum-атрибута (наприклад, колір) для `product_attr_index`.
 async fn create_published_product(
     proj: &CatalogProjection,
     attribute_id: &str,
@@ -95,6 +97,7 @@ async fn create_published_product(
     title: &str,
     slug: &str,
     price_minor: i64,
+    val_text: &str,
 ) {
     proj.dispatch(
         "product",
@@ -121,7 +124,7 @@ async fn create_published_product(
                 "reason": "attribute_value_set",
                 "attribute_id": attribute_id,
                 "data_type": "enum",
-                "val_text": "blue",
+                "val_text": val_text,
                 "updated_at": 2,
             }),
         ),
@@ -155,6 +158,7 @@ async fn category_page_with_products_returns_html_with_jsonld() {
         "Синій віджет",
         "blue-widget",
         19999,
+        "blue",
     )
     .await;
 
@@ -253,6 +257,10 @@ async fn category_page_without_products_renders_empty_state() {
         body.contains("Електроніка"),
         "body should contain category name: {body}"
     );
+    assert!(
+        !body.contains("<form"),
+        "no filters configured for category — no <form> expected: {body}"
+    );
 
     let jsonld = extract_jsonld_blocks(&body);
     assert!(
@@ -277,6 +285,301 @@ async fn unknown_category_slug_returns_404() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+/// Прив'язати атрибут до категорії як `checkbox_or`-фільтр з двома опціями ("blue"/"red").
+async fn seed_checkbox_filter(tax: &TaxonomyRepo, category_id: &str, attribute_id: &str) {
+    tax.create_filter(&Filter {
+        id: "filter1".into(),
+        category_id: category_id.into(),
+        attribute_id: attribute_id.into(),
+        filter_type: FilterType::CheckboxOr,
+        position: 0,
+    })
+    .await
+    .expect("filter");
+
+    for (id, value, position) in [("opt-blue", "blue", 0), ("opt-red", "red", 1)] {
+        tax.create_attribute_option(&AttributeOption {
+            id: id.into(),
+            attribute_id: attribute_id.into(),
+            value: value.into(),
+            position,
+        })
+        .await
+        .expect("attribute option");
+    }
+}
+
+async fn body_string(response: axum::response::Response) -> String {
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    String::from_utf8(body.to_vec()).unwrap()
+}
+
+#[tokio::test]
+async fn category_filter_checkbox_or_narrows_results_and_marks_checked_option() {
+    let t = temp_db("web-category-checkbox").await;
+    let tax = TaxonomyRepo::new(t.db.clone());
+    let proj = CatalogProjection::new(t.db.clone());
+
+    let (category, attribute) = seed_category(&tax).await;
+    seed_checkbox_filter(&tax, &category.id, &attribute.id).await;
+
+    create_published_product(
+        &proj,
+        &attribute.id,
+        "p1",
+        "Синій віджет",
+        "blue-widget",
+        19999,
+        "blue",
+    )
+    .await;
+    create_published_product(
+        &proj,
+        &attribute.id,
+        "p2",
+        "Червоний віджет",
+        "red-widget",
+        29999,
+        "red",
+    )
+    .await;
+
+    let app = router(app_state(&t.db).await);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/c/{}?attr_attr1=blue", category.slug))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+
+    assert!(
+        body.contains("/p/blue-widget"),
+        "filtered result should include the blue product: {body}"
+    );
+    assert!(
+        !body.contains("/p/red-widget"),
+        "filtered result should exclude the red product: {body}"
+    );
+
+    let item_list_ld = extract_jsonld_blocks(&body)
+        .into_iter()
+        .find(|v| v["@type"] == "ItemList")
+        .expect("ItemList JSON-LD block");
+    let items = item_list_ld["itemListElement"]
+        .as_array()
+        .expect("itemListElement array");
+    assert_eq!(items.len(), 1, "expected a single filtered item: {body}");
+
+    // Форма фільтрів: "blue" відмічений, "red" — ні.
+    let blue_input = format!(
+        "input type=\"checkbox\" name=\"attr_{}\" value=\"blue\" checked",
+        attribute.id
+    );
+    let red_input = format!(
+        "input type=\"checkbox\" name=\"attr_{}\" value=\"red\"",
+        attribute.id
+    );
+    assert!(
+        body.contains(&blue_input),
+        "blue checkbox should be checked: {body}"
+    );
+    assert!(
+        !body.contains(&format!("{red_input} checked")),
+        "red checkbox should not be checked: {body}"
+    );
+}
+
+#[tokio::test]
+async fn category_page_without_filter_params_shows_all_with_unchecked_form() {
+    let t = temp_db("web-category-checkbox-none").await;
+    let tax = TaxonomyRepo::new(t.db.clone());
+    let proj = CatalogProjection::new(t.db.clone());
+
+    let (category, attribute) = seed_category(&tax).await;
+    seed_checkbox_filter(&tax, &category.id, &attribute.id).await;
+
+    create_published_product(
+        &proj,
+        &attribute.id,
+        "p1",
+        "Синій віджет",
+        "blue-widget",
+        19999,
+        "blue",
+    )
+    .await;
+    create_published_product(
+        &proj,
+        &attribute.id,
+        "p2",
+        "Червоний віджет",
+        "red-widget",
+        29999,
+        "red",
+    )
+    .await;
+
+    let app = router(app_state(&t.db).await);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/c/{}", category.slug))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+
+    assert!(
+        body.contains("/p/blue-widget") && body.contains("/p/red-widget"),
+        "without filter params both products should be listed: {body}"
+    );
+    assert!(
+        body.contains("<form"),
+        "category with configured filters should render a <form>: {body}"
+    );
+    assert!(
+        !body.contains("checked"),
+        "no checkbox should be pre-checked without filter params: {body}"
+    );
+    assert!(
+        body.contains(&format!("name=\"attr_{}\"", attribute.id)),
+        "form should expose the checkbox_or filter param: {body}"
+    );
+}
+
+#[tokio::test]
+async fn category_filter_range_price_narrows_results() {
+    let t = temp_db("web-category-range-price").await;
+    let tax = TaxonomyRepo::new(t.db.clone());
+    let proj = CatalogProjection::new(t.db.clone());
+
+    let (category, attribute) = seed_category(&tax).await;
+    // attribute_id потрібен лише для задоволення FK `filters.attribute_id` —
+    // запит RangePrice будує умову по `pp.price_minor`, не по `product_attr_index`.
+    tax.create_filter(&Filter {
+        id: "filter-price".into(),
+        category_id: category.id.clone(),
+        attribute_id: attribute.id.clone(),
+        filter_type: FilterType::RangePrice,
+        position: 0,
+    })
+    .await
+    .expect("filter");
+
+    create_published_product(
+        &proj,
+        &attribute.id,
+        "p1",
+        "Дешевий віджет",
+        "cheap-widget",
+        10000, // 100.00 UAH
+        "blue",
+    )
+    .await;
+    create_published_product(
+        &proj,
+        &attribute.id,
+        "p2",
+        "Дорогий віджет",
+        "expensive-widget",
+        20000, // 200.00 UAH
+        "blue",
+    )
+    .await;
+
+    let app = router(app_state(&t.db).await);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/c/{}?price_min=100&price_max=150", category.slug))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+
+    assert!(
+        body.contains("/p/cheap-widget"),
+        "in-range product should be listed: {body}"
+    );
+    assert!(
+        !body.contains("/p/expensive-widget"),
+        "out-of-range product should not be listed: {body}"
+    );
+
+    // Форма зберігає введені межі (у гривнях, як вводив користувач).
+    assert!(
+        body.contains("name=\"price_min\" value=\"100\""),
+        "price_min should be preserved in the form: {body}"
+    );
+    assert!(
+        body.contains("name=\"price_max\" value=\"150\""),
+        "price_max should be preserved in the form: {body}"
+    );
+}
+
+#[tokio::test]
+async fn category_filter_unknown_and_garbage_params_render_gracefully() {
+    let t = temp_db("web-category-garbage-params").await;
+    let tax = TaxonomyRepo::new(t.db.clone());
+    let proj = CatalogProjection::new(t.db.clone());
+
+    let (category, attribute) = seed_category(&tax).await;
+    seed_checkbox_filter(&tax, &category.id, &attribute.id).await;
+
+    create_published_product(
+        &proj,
+        &attribute.id,
+        "p1",
+        "Синій віджет",
+        "blue-widget",
+        19999,
+        "blue",
+    )
+    .await;
+
+    let app = router(app_state(&t.db).await);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/c/{}?attr_doesnotexist=x&attr_{}_min=notanumber",
+                    category.slug, attribute.id
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+
+    assert!(
+        body.contains("/p/blue-widget"),
+        "unrecognized filter params should not exclude products: {body}"
+    );
 }
 
 /// Извлечь и распарсить все блоки `<script type="application/ld+json">` из HTML-страницы.
