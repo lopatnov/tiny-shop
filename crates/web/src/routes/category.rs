@@ -207,55 +207,73 @@ fn parsed_f64(raw: &[(String, String)], key: &str) -> Option<f64> {
         .and_then(|(_, v)| v.trim().parse::<f64>().ok())
 }
 
+/// Значения повторяемого параметра `attr_<attribute_id>`, или `None`, если ни одного не задано
+/// (для `checkbox_or`/`enum_and` — отсутствие значений means no-op).
+fn checkbox_values(raw: &[(String, String)], attribute_id: &str) -> Option<Vec<String>> {
+    let values = values_for(raw, &format!("attr_{attribute_id}"));
+    if values.is_empty() {
+        None
+    } else {
+        Some(values.into_iter().map(str::to_string).collect())
+    }
+}
+
+/// Границы диапазона из `min_key`/`max_key`, или `None`, если обе отсутствуют/нерозбірні
+/// (для `range_generic`/`range_price` — отсутствие обеих границ means no-op).
+fn range_bounds(
+    raw: &[(String, String)],
+    min_key: &str,
+    max_key: &str,
+) -> Option<(Option<f64>, Option<f64>)> {
+    let min = parsed_f64(raw, min_key);
+    let max = parsed_f64(raw, max_key);
+    (min.is_some() || max.is_some()).then_some((min, max))
+}
+
+/// Условие фильтрации для одного [`Filter`] из query-параметров, или `None` — нет значений в
+/// `raw`, либо `FilterType::String`/`FilterType::Number` (пока не підтримуються).
+fn filter_cond_for(filter: &Filter, raw: &[(String, String)]) -> Option<FilterCond> {
+    match filter.filter_type {
+        FilterType::CheckboxOr => {
+            checkbox_values(raw, &filter.attribute_id).map(|values| FilterCond::CheckboxOr {
+                attribute_id: filter.attribute_id.clone(),
+                values,
+            })
+        }
+        FilterType::EnumAnd => {
+            checkbox_values(raw, &filter.attribute_id).map(|values| FilterCond::EnumAnd {
+                attribute_id: filter.attribute_id.clone(),
+                values,
+            })
+        }
+        FilterType::RangeGeneric => {
+            let min_key = format!("attr_{}_min", filter.attribute_id);
+            let max_key = format!("attr_{}_max", filter.attribute_id);
+            let (min, max) = range_bounds(raw, &min_key, &max_key)?;
+            Some(FilterCond::RangeGeneric {
+                attribute_id: filter.attribute_id.clone(),
+                min,
+                max,
+            })
+        }
+        FilterType::RangePrice => {
+            let (min, max) = range_bounds(raw, "price_min", "price_max")?;
+            Some(FilterCond::RangePrice {
+                min_minor: min.map(major_to_minor),
+                max_minor: max.map(major_to_minor),
+            })
+        }
+        FilterType::String | FilterType::Number => None,
+    }
+}
+
 /// Построить условия фильтрации для [`SearchQuery::filters`] из конфигурации фильтров
 /// категории и query-параметров. Фильтры без значений в `raw` не добавляются (no-op).
 fn build_filter_conds(filters: &[Filter], raw: &[(String, String)]) -> Vec<FilterCond> {
-    let mut conds = Vec::new();
-    for filter in filters {
-        match filter.filter_type {
-            FilterType::CheckboxOr => {
-                let values = values_for(raw, &format!("attr_{}", filter.attribute_id));
-                if !values.is_empty() {
-                    conds.push(FilterCond::CheckboxOr {
-                        attribute_id: filter.attribute_id.clone(),
-                        values: values.into_iter().map(str::to_string).collect(),
-                    });
-                }
-            }
-            FilterType::EnumAnd => {
-                let values = values_for(raw, &format!("attr_{}", filter.attribute_id));
-                if !values.is_empty() {
-                    conds.push(FilterCond::EnumAnd {
-                        attribute_id: filter.attribute_id.clone(),
-                        values: values.into_iter().map(str::to_string).collect(),
-                    });
-                }
-            }
-            FilterType::RangeGeneric => {
-                let min = parsed_f64(raw, &format!("attr_{}_min", filter.attribute_id));
-                let max = parsed_f64(raw, &format!("attr_{}_max", filter.attribute_id));
-                if min.is_some() || max.is_some() {
-                    conds.push(FilterCond::RangeGeneric {
-                        attribute_id: filter.attribute_id.clone(),
-                        min,
-                        max,
-                    });
-                }
-            }
-            FilterType::RangePrice => {
-                let min_minor = parsed_f64(raw, "price_min").map(major_to_minor);
-                let max_minor = parsed_f64(raw, "price_max").map(major_to_minor);
-                if min_minor.is_some() || max_minor.is_some() {
-                    conds.push(FilterCond::RangePrice {
-                        min_minor,
-                        max_minor,
-                    });
-                }
-            }
-            FilterType::String | FilterType::Number => {}
-        }
-    }
-    conds
+    filters
+        .iter()
+        .filter_map(|filter| filter_cond_for(filter, raw))
+        .collect()
 }
 
 /// Перевести гривны (как вводит пользователь) в минорные единицы (копейки), округляя до целого —
