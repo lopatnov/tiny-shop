@@ -18,7 +18,7 @@ use axum::extract::{Path, Query, State};
 use axum::response::{Html, IntoResponse, Response};
 use catalog::{Attribute, CatalogSearch, Filter, FilterCond, FilterType, Lang, SearchQuery, Sort};
 use maud::{Markup, html};
-use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::Deserialize;
 use shared::Pagination;
 
@@ -418,7 +418,16 @@ fn pagination_href(slug: &str, raw: &[(String, String)], page: u32) -> String {
     format!("/c/{slug}?{qs}")
 }
 
+/// Множина символів для percent-encoding компонентів query-строки: як [`NON_ALPHANUMERIC`],
+/// але без `_-.~` (RFC 3986 "unreserved") — щоб посилання пагінації лишались читабельними
+/// (`attr_attr1_min=10`, а не `attr%5Fattr1%5Fmin=10`).
+const QUERY_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'_')
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'~');
+
 /// Процентное кодирование одного компонента query-строки (ключа или значения).
 fn encode_qs(s: &str) -> std::borrow::Cow<'_, str> {
-    utf8_percent_encode(s, NON_ALPHANUMERIC).into()
+    utf8_percent_encode(s, QUERY_ENCODE_SET).into()
 }
