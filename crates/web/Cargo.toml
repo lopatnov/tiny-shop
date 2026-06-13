@@ -14,6 +14,7 @@ catalog = { workspace = true }
 shared = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+tower-http = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
 tokio = { workspace = true }

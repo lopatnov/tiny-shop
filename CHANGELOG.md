@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a product grid, breadcrumb navigation, pagination (`?page=`), and `ItemList`/`BreadcrumbList`
   JSON-LD (Schema.org); `catalog::TaxonomyRepo::get_category_by_slug` resolves a category by its
   slug (filters are not implemented yet — planned for chunk 3).
+- **SSR home page, sitemap, robots.txt, brand assets (T1a-6 chunk 3)**: `GET /` home page
+  linking to root categories; `GET /sitemap.xml` listing the home page, full category tree, and
+  all published products; `GET /robots.txt` pointing at the sitemap; static brand assets
+  (favicons, logo) served at `/assets/brand/*` via `tower-http::ServeDir`, plus a shared
+  `<header>` with the site logo and favicon `<link>` tags added to `page_shell`.
 
 ### Security
 
