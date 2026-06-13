@@ -57,10 +57,13 @@ async fn render(state: &AppState, slug: &str, page: u32) -> Result<String, WebEr
     }
     crumbs.push((category.name.clone(), None));
 
-    let pagination = Pagination::clamped(
-        (page - 1) * Pagination::DEFAULT_LIMIT,
-        Pagination::DEFAULT_LIMIT,
-    );
+    let limit = Pagination::DEFAULT_LIMIT;
+    let offset = (page as u64)
+        .saturating_sub(1)
+        .saturating_mul(limit as u64)
+        .try_into()
+        .unwrap_or(u32::MAX);
+    let pagination = Pagination::clamped(offset, limit);
 
     let result = state
         .search
@@ -135,7 +138,7 @@ async fn render(state: &AppState, slug: &str, page: u32) -> Result<String, WebEr
                     a href=(format!("/c/{slug}?page={}", page - 1)) { "Попередня" }
                 }
                 @if has_next {
-                    a href=(format!("/c/{slug}?page={}", page + 1)) { "Наступна" }
+                    a href=(format!("/c/{slug}?page={}", page.saturating_add(1))) { "Наступна" }
                 }
             }
         }
