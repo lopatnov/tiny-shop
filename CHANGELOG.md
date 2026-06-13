@@ -33,7 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SSR category page (T1a-6 chunk 2)**: Axum+maud `GET /c/{slug}` category listing page with
   a product grid, breadcrumb navigation, pagination (`?page=`), and `ItemList`/`BreadcrumbList`
   JSON-LD (Schema.org); `catalog::TaxonomyRepo::get_category_by_slug` resolves a category by its
-  slug (filters are not implemented yet — planned for chunk 3).
+  slug.
+- **SSR home page, sitemap, robots.txt, brand assets (T1a-6 chunk 3)**: `GET /` home page
+  linking to root categories; `GET /sitemap.xml` listing the home page, full category tree, and
+  all published products; `GET /robots.txt` pointing at the sitemap; static brand assets
+  (favicons, logo) served at `/assets/brand/*` via `tower-http::ServeDir`, plus a shared
+  `<header>` with the site logo and favicon `<link>` tags added to `page_shell`.
+- **Category filters (T1a-6 chunk 3)**: `GET /c/{slug}` now renders a `<form>` of
+  category-specific facet/attribute filters (per `catalog::taxonomy::Filter`/`FilterType`) —
+  `checkbox_or`/`enum_and` as `<fieldset>`s of checkboxes (`?attr_<attribute_id>=value`, repeatable),
+  `range_generic` as numeric "from"/"to" inputs (`?attr_<attribute_id>_min`/`_max`), and
+  `range_price` as a price range in major currency units (`?price_min`/`?price_max`, converted to
+  `*_minor` for `catalog::FilterCond::RangePrice`). The form is a plain `GET` form (no JS
+  required, WCAG 2.1 AA `<fieldset>`/`<legend>`/`<label>`), and active filters are carried through
+  the "Попередня"/"Наступна" pagination links.
 
 ### Security
 

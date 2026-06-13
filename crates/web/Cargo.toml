@@ -8,12 +8,14 @@ publish = false
 [dependencies]
 axum = { workspace = true }
 maud = { workspace = true }
+percent-encoding = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 catalog = { workspace = true }
 shared = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+tower-http = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
 tokio = { workspace = true }

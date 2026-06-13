@@ -50,15 +50,23 @@ On startup the binary:
 
 ## Current status & limitations
 
-This is Phase 1a (foundation). The server currently exposes two SSR pages:
+This is Phase 1a (foundation). The server currently exposes:
+- `GET /` — home page with navigation links to root categories;
 - `GET /p/{slug}` — product page with `Product`/`Offer`/`BreadcrumbList` JSON-LD;
-- `GET /c/{slug}` — category listing page with a product grid, pagination (`?page=`), and
-  `ItemList`/`BreadcrumbList` JSON-LD (no filters yet — planned for a later chunk).
+- `GET /c/{slug}` — category listing page with a product grid, pagination (`?page=`),
+  `ItemList`/`BreadcrumbList` JSON-LD, and a keyboard-operable `<form>` of category-specific
+  facet/attribute filters (checkbox/multi-select via `?attr_<id>=`, numeric ranges via
+  `?attr_<id>_min`/`_max`, and price range via `?price_min`/`?price_max`, all in major currency
+  units); active filters are preserved across pagination links;
+- `GET /sitemap.xml` — sitemap listing the home page, the full category tree, and all
+  published products;
+- `GET /robots.txt` — crawler directives pointing at the sitemap;
+- static brand assets (favicons, logo) served at `/assets/brand/*`.
 
-**There is no seeding mechanism or admin UI yet.** Databases are empty on first run, so both
-pages will always return `404` until data is inserted manually (e.g. via tests or direct
-SQL against `product.db`/`catalog.db`). This is expected at this stage — seller onboarding,
-product creation UI, checkout, and digital delivery are planned for later phases.
+**There is no seeding mechanism or admin UI yet.** Databases are empty on first run, so the
+category/product pages will always return `404` until data is inserted manually (e.g. via tests
+or direct SQL against `product.db`/`catalog.db`). This is expected at this stage — seller
+onboarding, product creation UI, checkout, and digital delivery are planned for later phases.
 
 For the broader roadmap, see `.claude/backlog/roadmap.md`.
 
