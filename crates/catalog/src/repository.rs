@@ -129,6 +129,37 @@ impl TaxonomyRepo {
         row.map(category_from_row).transpose()
     }
 
+    /// Прочитать категорию по `slug`.
+    ///
+    /// **Известное упрощение (MVP):** `slug` уникален только в пределах родителя
+    /// (`UNIQUE INDEX categories_parent_slug` в `0002_taxonomy.sql`), а не глобально — при
+    /// совпадении `slug` у категорий с разными родителями возвращается первая по `path`
+    /// (детерминированно, но произвольно с точки зрения бизнес-смысла). Для плоской/неглубокой
+    /// таксономии MVP это приемлемо; если дублирующиеся slug под разными родителями станут
+    /// реальной потребностью, маршрутизация `/c/{slug}` должна перейти на поиск по полному
+    /// `path` (см. [`Self::get_category_by_path`]) — решение согласовать с `architect`.
+    pub async fn get_category_by_slug(
+        &self,
+        slug: &str,
+        lang: Lang,
+    ) -> Result<Option<Category>, TaxonomyError> {
+        let row = sqlx::query(
+            "SELECT c.id, c.parent_id, COALESCE(t.value, c.name) AS name, c.slug, c.path, c.position \
+             FROM categories c \
+             LEFT JOIN translations t \
+               ON t.entity_type = ? AND t.entity_id = c.id \
+              AND t.lang = ? AND t.field = ? \
+             WHERE c.slug = ? ORDER BY c.path ASC LIMIT 1",
+        )
+        .bind(entity_types::CATEGORY)
+        .bind(lang.as_str())
+        .bind(fields::NAME)
+        .bind(slug)
+        .fetch_optional(&self.db.reader)
+        .await?;
+        row.map(category_from_row).transpose()
+    }
+
     /// Дочерние категории узла (для построения дерева). `parent_id = NULL` → корни.
     pub async fn list_categories_by_parent(
         &self,

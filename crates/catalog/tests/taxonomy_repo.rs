@@ -91,6 +91,22 @@ async fn category_tree_create_and_read() {
         .expect("found by path");
     assert_eq!(by_path.id, "c-phones");
 
+    // чтение по slug
+    let by_slug = repo
+        .get_category_by_slug("phones", Lang::Uk)
+        .await
+        .unwrap()
+        .expect("found by slug");
+    assert_eq!(by_slug.id, "c-phones");
+
+    // несуществующий slug
+    assert!(
+        repo.get_category_by_slug("no-such-slug", Lang::Uk)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
     // дети узла
     let roots = repo
         .list_categories_by_parent(None, Lang::Uk)

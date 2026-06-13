@@ -48,6 +48,40 @@ pub struct BreadcrumbList {
     pub item_list_element: Vec<ListItem>,
 }
 
+/// `Product`-сводка внутри `ItemListElement` (упрощённая — без `Offer`, см. [`ItemList`]).
+#[derive(Serialize)]
+pub struct ItemProduct {
+    #[serde(rename = "@type")]
+    pub type_: &'static str,
+    pub name: String,
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+}
+
+/// Элемент `ItemList` — позиция + вложенный `Product`.
+#[derive(Serialize)]
+pub struct ItemListElement {
+    #[serde(rename = "@type")]
+    pub type_: &'static str,
+    pub position: u32,
+    pub item: ItemProduct,
+}
+
+/// Schema.org `ItemList` для страниц-листингов (`/c/{slug}`, design-1a.md §6).
+///
+/// Минимальный вариант без `Offer`/доступности — только название, ссылка и (опц.) изображение
+/// каждого товара; этого достаточно для Rich Results карусели/списка.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemList {
+    #[serde(rename = "@context")]
+    pub context: &'static str,
+    #[serde(rename = "@type")]
+    pub type_: &'static str,
+    pub item_list_element: Vec<ItemListElement>,
+}
+
 /// Перевести цену в минорных единицах (копейки) в строку гривен без `f64`
 /// (целочисленная арифметика — без погрешности округления).
 ///
