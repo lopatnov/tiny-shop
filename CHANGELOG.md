@@ -30,5 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   HTML, breadcrumb navigation, and `Product`/`Offer`/`BreadcrumbList` JSON-LD (Schema.org);
   the outbox relay task's `JoinHandle` is now tracked so a panic is logged instead of
   silently stopping the relay (restart-on-panic is a follow-up, not implemented here).
+- **SSR category page (T1a-6 chunk 2)**: Axum+maud `GET /c/{slug}` category listing page with
+  a product grid, breadcrumb navigation, pagination (`?page=`), and `ItemList`/`BreadcrumbList`
+  JSON-LD (Schema.org); `catalog::TaxonomyRepo::get_category_by_slug` resolves a category by its
+  slug (filters are not implemented yet — planned for chunk 3).
 
 [Unreleased]: https://github.com/lopatnov/tiny-shop/compare/93ebb8e...HEAD

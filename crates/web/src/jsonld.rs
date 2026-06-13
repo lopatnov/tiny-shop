@@ -48,6 +48,40 @@ pub struct BreadcrumbList {
     pub item_list_element: Vec<ListItem>,
 }
 
+/// `Product`-сводка внутри `ItemListElement` (упрощённая — без `Offer`, см. [`ItemList`]).
+#[derive(Serialize)]
+pub struct ItemProduct {
+    #[serde(rename = "@type")]
+    pub type_: &'static str,
+    pub name: String,
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+}
+
+/// Элемент `ItemList` — позиция + вложенный `Product`.
+#[derive(Serialize)]
+pub struct ItemListElement {
+    #[serde(rename = "@type")]
+    pub type_: &'static str,
+    pub position: u32,
+    pub item: ItemProduct,
+}
+
+/// Schema.org `ItemList` для страниц-листингов (`/c/{slug}`, design-1a.md §6).
+///
+/// Минимальный вариант без `Offer`/доступности — только название, ссылка и (опц.) изображение
+/// каждого товара; этого достаточно для Rich Results карусели/списка.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemList {
+    #[serde(rename = "@context")]
+    pub context: &'static str,
+    #[serde(rename = "@type")]
+    pub type_: &'static str,
+    pub item_list_element: Vec<ItemListElement>,
+}
+
 /// Перевести цену в минорных единицах (копейки) в строку гривен без `f64`
 /// (целочисленная арифметика — без погрешности округления).
 ///
@@ -58,6 +92,34 @@ pub fn format_price_minor(price_minor: i64) -> String {
     let sign = if price_minor < 0 { "-" } else { "" };
     let abs = price_minor.unsigned_abs();
     format!("{sign}{}.{:02}", abs / 100, abs % 100)
+}
+
+/// Построить `BreadcrumbList` из цепочки крошек `(название, URL)`.
+///
+/// Крошка без URL (текущая страница) получает `current_path` — используется и
+/// для `/p/{slug}`, и для `/c/{slug}`, чтобы избежать дублирования между маршрутами.
+pub fn breadcrumb_list_ld(
+    base_url: &str,
+    crumbs: &[(String, Option<String>)],
+    current_path: &str,
+) -> BreadcrumbList {
+    BreadcrumbList {
+        context: "https://schema.org",
+        type_: "BreadcrumbList",
+        item_list_element: crumbs
+            .iter()
+            .enumerate()
+            .map(|(i, (name, url))| {
+                let path = url.clone().unwrap_or_else(|| current_path.to_string());
+                ListItem {
+                    type_: "ListItem",
+                    position: (i + 1) as u32,
+                    name: name.clone(),
+                    item: absolute_url(base_url, &path),
+                }
+            })
+            .collect(),
+    }
 }
 
 /// Построить абсолютный URL из `base_url` (без хвостового `/`) и пути,

@@ -11,6 +11,7 @@ maud = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 catalog = { workspace = true }
+shared = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 
