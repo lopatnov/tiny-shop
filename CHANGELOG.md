@@ -26,5 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   configuration snapshot (price, currency, selected options) for future checkout.
 - **Identity & access (T1a-2)**: account registration/login with Argon2id password hashing,
   server-side sessions backed by BLAKE3-hashed tokens, and `customer`/`seller`/`admin` roles.
+- **SSR product page (T1a-6 chunk 1)**: Axum+maud `GET /p/{slug}` product page with semantic
+  HTML, breadcrumb navigation, and `Product`/`Offer`/`BreadcrumbList` JSON-LD (Schema.org);
+  outbox relay now logs and survives panics via a tracked `JoinHandle`.
 
 [Unreleased]: https://github.com/lopatnov/tiny-shop/compare/93ebb8e...HEAD
