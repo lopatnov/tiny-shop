@@ -50,11 +50,13 @@ On startup the binary:
 
 ## Current status & limitations
 
-This is Phase 1a (foundation). The server currently exposes a single SSR page,
-`GET /p/{slug}` (product page with `Product`/`Offer`/`BreadcrumbList` JSON-LD).
+This is Phase 1a (foundation). The server currently exposes two SSR pages:
+- `GET /p/{slug}` — product page with `Product`/`Offer`/`BreadcrumbList` JSON-LD;
+- `GET /c/{slug}` — category listing page with a product grid, pagination (`?page=`), and
+  `ItemList`/`BreadcrumbList` JSON-LD (no filters yet — planned for a later chunk).
 
-**There is no seeding mechanism or admin UI yet.** Databases are empty on first run, so
-`/p/{slug}` will always return `404` until data is inserted manually (e.g. via tests or direct
+**There is no seeding mechanism or admin UI yet.** Databases are empty on first run, so both
+pages will always return `404` until data is inserted manually (e.g. via tests or direct
 SQL against `product.db`/`catalog.db`). This is expected at this stage — seller onboarding,
 product creation UI, checkout, and digital delivery are planned for later phases.
 
