@@ -144,7 +144,7 @@ async fn render(
             .map_err(|e| WebError::Internal(e.to_string()))?;
         let attrs_by_id: HashMap<&str, &Attribute> =
             attributes.iter().map(|a| (a.id.as_str(), a)).collect();
-        Some(render_filter_form(state, slug, &filters, &attrs_by_id, raw).await?)
+        render_filter_form(state, slug, &filters, &attrs_by_id, raw).await?
     };
 
     let has_prev = pagination.offset > 0;
@@ -287,14 +287,15 @@ fn major_to_minor(major: f64) -> i64 {
 // -----------------------------------------------------------------
 
 /// Построить `<form>` фильтров категории (WCAG 2.1 AA: `<fieldset>`/`<legend>`/`<label>`,
-/// `GET`-форма без JS).
+/// `GET`-форма без JS). `None`, если ни один фильтр категории не дал renderable `<fieldset>`
+/// (например, все — пока неподдерживаемых `FilterType::String`/`Number`).
 async fn render_filter_form(
     state: &AppState,
     slug: &str,
     filters: &[Filter],
     attrs_by_id: &HashMap<&str, &Attribute>,
     raw: &[(String, String)],
-) -> Result<Markup, WebError> {
+) -> Result<Option<Markup>, WebError> {
     let mut fieldsets = Vec::with_capacity(filters.len());
     for filter in filters {
         let fieldset = match filter.filter_type {
@@ -330,14 +331,18 @@ async fn render_filter_form(
         fieldsets.push(fieldset);
     }
 
-    Ok(html! {
+    if fieldsets.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(html! {
         form role="search" method="get" action=(format!("/c/{slug}")) {
             @for fieldset in &fieldsets {
                 (fieldset)
             }
             button type="submit" { "Застосувати" }
         }
-    })
+    }))
 }
 
 /// `<legend>` для `range_generic`: название атрибута + (опц.) технический юнит в скобках.
@@ -388,11 +393,11 @@ fn range_fieldset(
             legend { (legend) }
             label {
                 "Від "
-                input type="number" name=(min_param) value=[min_value];
+                input type="number" step="any" name=(min_param) value=[min_value];
             }
             label {
                 "До "
-                input type="number" name=(max_param) value=[max_value];
+                input type="number" step="any" name=(max_param) value=[max_value];
             }
         }
     }
