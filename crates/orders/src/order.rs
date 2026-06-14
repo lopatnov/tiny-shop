@@ -86,3 +86,21 @@ pub struct NewOrderItem {
     pub currency: String,
     pub config_snapshot: Option<serde_json::Value>,
 }
+
+/// Контактные данные гостя для выдачи/чека (T1b-2). Изолированы в `order_contact` — отдельно
+/// от `orders`, чтобы PII (email) не раздувало основную таблицу.
+#[derive(Debug, Clone)]
+pub struct OrderContact {
+    pub order_id: String,
+    pub email: String,
+    pub name: Option<String>,
+    /// Unix-миллисекунды создания.
+    pub created_at: i64,
+}
+
+/// Входные данные для контакта гостя на checkout.
+#[derive(Debug, Clone)]
+pub struct NewOrderContact {
+    pub email: String,
+    pub name: Option<String>,
+}

@@ -46,6 +46,15 @@ pub fn set_cart_cookie(raw_token: &str, secure: bool) -> String {
     )
 }
 
+/// Собрать значение заголовка `Set-Cookie`, истекающее cart-cookie немедленно (`Max-Age=0`).
+///
+/// Используется после успешного checkout — корзина оформлена в заказ и `clear()`-ена, токен
+/// больше не нужен; та же атрибутика, что у `set_cart_cookie` (без значения и без `Secure` —
+/// браузер удаляет cookie по имени/path, атрибут безопасности на удаление не влияет).
+pub fn expire_cart_cookie() -> String {
+    format!("{CART_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,5 +119,13 @@ mod tests {
             !value.contains("Secure"),
             "secure=false should not add Secure attribute: {value}"
         );
+    }
+
+    #[test]
+    fn expire_cart_cookie_clears_with_max_age_zero() {
+        let value = expire_cart_cookie();
+        assert!(value.starts_with("cart=;"), "value: {value}");
+        assert!(value.contains("Max-Age=0"));
+        assert!(value.contains("Path=/"));
     }
 }

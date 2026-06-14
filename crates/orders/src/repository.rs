@@ -13,7 +13,7 @@ use sqlx::Row;
 use db::{ContextDb, outbox};
 use shared::{NewEvent, Page, Pagination, now_ms};
 
-use crate::order::{NewOrder, NewOrderItem, Order, OrderItem, OrderStatus};
+use crate::order::{NewOrder, NewOrderContact, NewOrderItem, Order, OrderItem, OrderStatus};
 
 const AGGREGATE: &str = "order";
 
@@ -28,6 +28,8 @@ pub enum OrderError {
     NotFound(String),
     #[error("serialization: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("checkout requires at least one item")]
+    EmptyCheckout,
 }
 
 impl From<db::DbError> for OrderError {
@@ -124,6 +126,114 @@ impl OrderRepo {
         .await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    /// Оформить заказ из позиций корзины — одна атомарная транзакция (T1b-2).
+    ///
+    /// Вставляет заказ (`created`), все `items` (по одной строке на каждую единицу товара —
+    /// `qty` уже "развёрнут" вызывающей стороной в отдельные `NewOrderItem`, как и предполагает
+    /// неизменяемый снимок одной позиции), пересчитывает `total_minor` одним `UPDATE` той же
+    /// формулой, что `add_item` (`SUM(unit_price_minor)` по всем позициям заказа — при N строках
+    /// на один товар это равносильно `unit_price_minor * qty`), опционально сохраняет контакт
+    /// гостя и кладёт `OrderCreated` в outbox — всё в одном `tx.commit()`. Ошибка на любом шаге
+    /// откатывает всё (ни заказа, ни позиций, ни контакта).
+    ///
+    /// `items` не может быть пустым — оформление без позиций запрещено
+    /// ([`OrderError::EmptyCheckout`]), заказ в этом случае не создаётся.
+    ///
+    /// Возвращает `order_id` (генерируется здесь — `uuid` v4).
+    pub async fn checkout(
+        &self,
+        buyer_id: &str,
+        currency: &str,
+        items: &[NewOrderItem],
+        contact: Option<&NewOrderContact>,
+    ) -> Result<String, OrderError> {
+        if items.is_empty() {
+            return Err(OrderError::EmptyCheckout);
+        }
+        let order_id = uuid::Uuid::new_v4().to_string();
+        let created_at = now_ms();
+
+        let mut tx = self.db.writer.begin().await?;
+
+        sqlx::query(
+            "INSERT INTO orders (id, buyer_id, status, total_minor, currency, created_at) \
+             VALUES (?, ?, 'created', 0, ?, ?)",
+        )
+        .bind(&order_id)
+        .bind(buyer_id)
+        .bind(currency)
+        .bind(created_at)
+        .execute(&mut *tx)
+        .await?;
+
+        for item in items {
+            let snapshot_text = item
+                .config_snapshot
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?;
+            sqlx::query(
+                "INSERT INTO order_items \
+                 (id, order_id, product_id, seller_id, variant_id, title, \
+                  unit_price_minor, currency, config_snapshot) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&item.id)
+            .bind(&order_id)
+            .bind(&item.product_id)
+            .bind(&item.seller_id)
+            .bind(&item.variant_id)
+            .bind(&item.title)
+            .bind(item.unit_price_minor)
+            .bind(&item.currency)
+            .bind(&snapshot_text)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        // Same formula as add_item, applied once after all inserts.
+        sqlx::query(
+            "UPDATE orders SET total_minor = \
+             (SELECT COALESCE(SUM(unit_price_minor), 0) FROM order_items WHERE order_id = ?) \
+             WHERE id = ?",
+        )
+        .bind(&order_id)
+        .bind(&order_id)
+        .execute(&mut *tx)
+        .await?;
+
+        if let Some(contact) = contact {
+            sqlx::query(
+                "INSERT INTO order_contact (order_id, email, name, created_at) \
+                 VALUES (?, ?, ?, ?)",
+            )
+            .bind(&order_id)
+            .bind(&contact.email)
+            .bind(&contact.name)
+            .bind(created_at)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        outbox::enqueue(
+            &mut *tx,
+            &NewEvent {
+                aggregate: AGGREGATE.to_string(),
+                aggregate_id: order_id.clone(),
+                event_type: "OrderCreated".to_string(),
+                payload: serde_json::json!({
+                    "order_id": order_id,
+                    "buyer_id": buyer_id,
+                    "currency": currency,
+                }),
+            },
+        )
+        .await?;
+
+        tx.commit().await?;
+        Ok(order_id)
     }
 
     // -----------------------------------------------------------------

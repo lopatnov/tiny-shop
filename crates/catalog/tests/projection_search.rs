@@ -834,3 +834,68 @@ async fn get_card_by_slug_returns_none_for_unknown_slug() {
         None
     );
 }
+
+// ---------------------------------------------------------------------------
+// Тесты SqliteCatalogSearch::get_card_by_id (T1b-2 — свежий снимок цены/seller_id для checkout)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn get_card_by_id_returns_published_product() {
+    let t = temp_db("card-by-id-published").await;
+    let proj = CatalogProjection::new(t.db.clone());
+    let search = SqliteCatalogSearch::new(t.db.clone());
+
+    setup_published_product(&t, &proj, "p_1", "Blue Widget", 1999).await;
+
+    let card = search
+        .get_card_by_id("p_1")
+        .await
+        .expect("query")
+        .expect("found");
+
+    assert_eq!(card.id, "p_1");
+    assert_eq!(card.seller_id, "s1");
+    assert_eq!(card.title, "Blue Widget");
+    assert_eq!(card.price_minor, 1999);
+    assert_eq!(card.currency, "UAH");
+    assert_eq!(card.status, "published");
+}
+
+#[tokio::test]
+async fn get_card_by_id_returns_none_for_unpublished() {
+    let t = temp_db("card-by-id-draft").await;
+    let proj = CatalogProjection::new(t.db.clone());
+    let search = SqliteCatalogSearch::new(t.db.clone());
+
+    // Draft product (never published).
+    proj.dispatch(
+        "product",
+        &event(
+            1,
+            "ProductCreated",
+            serde_json::json!({
+                "id": "p1", "seller_id": "s1", "title": "Draft Item", "slug": "draft-item",
+                "description": "", "price_minor": 100, "currency": "UAH",
+                "status": "draft", "created_at": 1, "updated_at": 1,
+            }),
+        ),
+    )
+    .await
+    .expect("created");
+
+    assert_eq!(search.get_card_by_id("p1").await.expect("query"), None);
+}
+
+#[tokio::test]
+async fn get_card_by_id_returns_none_for_unknown_id() {
+    let t = temp_db("card-by-id-unknown").await;
+    let search = SqliteCatalogSearch::new(t.db.clone());
+
+    assert_eq!(
+        search
+            .get_card_by_id("does-not-exist")
+            .await
+            .expect("query"),
+        None
+    );
+}

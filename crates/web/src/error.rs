@@ -30,6 +30,18 @@ impl From<orders::CartError> for WebError {
     }
 }
 
+/// `orders::OrderError` → `WebError`: `EmptyCheckout` — некорректный запрос (400; пустая
+/// корзина уже отфильтрована редиректом раньше, но защита остаётся), прочие — внутренняя
+/// ошибка (500).
+impl From<orders::OrderError> for WebError {
+    fn from(err: orders::OrderError) -> Self {
+        match err {
+            orders::OrderError::EmptyCheckout => WebError::BadRequest("cart is empty".to_string()),
+            other => WebError::Internal(other.to_string()),
+        }
+    }
+}
+
 impl IntoResponse for WebError {
     fn into_response(self) -> Response {
         match self {

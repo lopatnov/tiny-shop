@@ -4,7 +4,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use db::{ContextDb, migrate_orders, open};
-use orders::{NewOrder, NewOrderItem, OrderRepo, OrderStatus};
+use orders::{NewOrder, NewOrderContact, NewOrderItem, OrderError, OrderRepo, OrderStatus};
 use shared::Pagination;
 
 struct TempDb {
@@ -225,4 +225,159 @@ async fn order_emits_to_outbox() {
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].event_type, "OrderCreated");
     assert_eq!(events[0].aggregate_id, "ord-outbox");
+}
+
+// -----------------------------------------------------------------
+// checkout (T1b-2)
+// -----------------------------------------------------------------
+
+/// Позиция корзины с `qty > 1` разворачивается в несколько `NewOrderItem` (по одной на
+/// единицу товара) — см. `web::routes::checkout::render_submit`. Хелпер генерирует `qty`
+/// штук с уникальными id и одинаковым снимком.
+fn item_units(
+    product_id: &str,
+    title: &str,
+    unit_price_minor: i64,
+    qty: usize,
+) -> Vec<NewOrderItem> {
+    (0..qty)
+        .map(|i| NewOrderItem {
+            id: format!("{product_id}-unit-{i}"),
+            order_id: String::new(),
+            product_id: product_id.to_string(),
+            seller_id: "seller-checkout".to_string(),
+            variant_id: None,
+            title: title.to_string(),
+            unit_price_minor,
+            currency: "UAH".to_string(),
+            config_snapshot: None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn checkout_happy_path_creates_order_with_items_total_contact_and_outbox() {
+    let t = temp_db("checkout-happy").await;
+    let repo = OrderRepo::new(t.db.clone());
+
+    // Two distinct products, one with qty=2 — total must be Σ unit_price_minor * qty.
+    let mut items = item_units("prod-a", "Електронна книга", 10_000, 2);
+    items.extend(item_units("prod-b", "Відео-курс", 25_000, 1));
+
+    let contact = NewOrderContact {
+        email: "buyer@example.com".to_string(),
+        name: Some("Іван".to_string()),
+    };
+
+    let order_id = repo
+        .checkout("guest:abc", "UAH", &items, Some(&contact))
+        .await
+        .expect("checkout");
+
+    let order = repo
+        .get_order_with_items(&order_id)
+        .await
+        .expect("get")
+        .expect("found");
+    assert_eq!(order.buyer_id, "guest:abc");
+    assert_eq!(order.status, OrderStatus::Created);
+    assert_eq!(order.currency, "UAH");
+    // (10_000 * 2) + (25_000 * 1) = 45_000
+    assert_eq!(order.total_minor, 45_000);
+    assert_eq!(order.items.len(), 3);
+
+    let events = db::outbox::fetch_unpublished(&t.db.reader, 10)
+        .await
+        .expect("fetch");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].event_type, "OrderCreated");
+    assert_eq!(events[0].aggregate_id, order_id);
+
+    let contact_row: (String, Option<String>) =
+        sqlx::query_as("SELECT email, name FROM order_contact WHERE order_id = ?")
+            .bind(&order_id)
+            .fetch_one(&t.db.reader)
+            .await
+            .expect("contact row");
+    assert_eq!(contact_row.0, "buyer@example.com");
+    assert_eq!(contact_row.1.as_deref(), Some("Іван"));
+}
+
+#[tokio::test]
+async fn checkout_without_contact_skips_order_contact() {
+    let t = temp_db("checkout-no-contact").await;
+    let repo = OrderRepo::new(t.db.clone());
+
+    let items = item_units("prod-a", "Електронна книга", 10_000, 1);
+    let order_id = repo
+        .checkout("guest:nocontact", "UAH", &items, None)
+        .await
+        .expect("checkout");
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM order_contact WHERE order_id = ?")
+        .bind(&order_id)
+        .fetch_one(&t.db.reader)
+        .await
+        .expect("count");
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn checkout_empty_items_returns_error_and_creates_nothing() {
+    let t = temp_db("checkout-empty").await;
+    let repo = OrderRepo::new(t.db.clone());
+
+    let err = repo
+        .checkout("guest:empty", "UAH", &[], None)
+        .await
+        .expect_err("empty items must be rejected");
+    assert!(matches!(err, OrderError::EmptyCheckout), "got {err:?}");
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders")
+        .fetch_one(&t.db.reader)
+        .await
+        .expect("count");
+    assert_eq!(count, 0, "no order row must be created for empty checkout");
+}
+
+#[tokio::test]
+async fn checkout_is_atomic_rollback_on_duplicate_item_id() {
+    let t = temp_db("checkout-atomic").await;
+    let repo = OrderRepo::new(t.db.clone());
+
+    // Two items sharing the same `id` violate the order_items PRIMARY KEY mid-transaction —
+    // the whole checkout (order + first item + contact) must roll back.
+    let mut items = item_units("prod-a", "Дублікат", 5_000, 1);
+    let mut duplicate = item_units("prod-a", "Дублікат", 5_000, 1).remove(0);
+    duplicate.id = items[0].id.clone();
+    items.push(duplicate);
+
+    let contact = NewOrderContact {
+        email: "rollback@example.com".to_string(),
+        name: None,
+    };
+
+    let err = repo
+        .checkout("guest:atomic", "UAH", &items, Some(&contact))
+        .await
+        .expect_err("duplicate item id should fail");
+    assert!(matches!(err, OrderError::Db(_)), "got {err:?}");
+
+    let orders_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders")
+        .fetch_one(&t.db.reader)
+        .await
+        .expect("count orders");
+    assert_eq!(orders_count, 0, "order must not exist after rollback");
+
+    let items_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM order_items")
+        .fetch_one(&t.db.reader)
+        .await
+        .expect("count items");
+    assert_eq!(items_count, 0, "no items must exist after rollback");
+
+    let contact_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM order_contact")
+        .fetch_one(&t.db.reader)
+        .await
+        .expect("count contact");
+    assert_eq!(contact_count, 0, "no contact must exist after rollback");
 }

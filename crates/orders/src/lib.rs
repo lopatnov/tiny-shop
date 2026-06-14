@@ -11,5 +11,7 @@ mod repository;
 
 pub use cart::{Cart, CartItem, CartToken, NewCartItem};
 pub use cart_repo::{CartError, CartRepo, MAX_QTY};
-pub use order::{NewOrder, NewOrderItem, Order, OrderItem, OrderStatus};
+pub use order::{
+    NewOrder, NewOrderContact, NewOrderItem, Order, OrderContact, OrderItem, OrderStatus,
+};
 pub use repository::{OrderError, OrderRepo};
