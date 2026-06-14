@@ -267,16 +267,18 @@ impl ProductRepo {
 
     /// Прочитать товар по id, с резолвом title/description на запрошенный язык.
     pub async fn get_product(&self, id: &str, lang: Lang) -> Result<Option<Product>, ProductError> {
-        let row = sqlx::query(&product_select_with_translations("p.id = ?", "p.id ASC"))
-            .bind(entity_types::PRODUCT)
-            .bind(lang.as_str())
-            .bind(fields::TITLE)
-            .bind(entity_types::PRODUCT)
-            .bind(lang.as_str())
-            .bind(fields::DESCRIPTION)
-            .bind(id)
-            .fetch_optional(&self.db.reader)
-            .await?;
+        let row = sqlx::query(sqlx::AssertSqlSafe(product_select_with_translations(
+            "p.id = ?", "p.id ASC",
+        )))
+        .bind(entity_types::PRODUCT)
+        .bind(lang.as_str())
+        .bind(fields::TITLE)
+        .bind(entity_types::PRODUCT)
+        .bind(lang.as_str())
+        .bind(fields::DESCRIPTION)
+        .bind(id)
+        .fetch_optional(&self.db.reader)
+        .await?;
         row.map(product_from_row).transpose()
     }
 
@@ -287,10 +289,10 @@ impl ProductRepo {
         slug: &str,
         lang: Lang,
     ) -> Result<Option<Product>, ProductError> {
-        let row = sqlx::query(&product_select_with_translations(
+        let row = sqlx::query(sqlx::AssertSqlSafe(product_select_with_translations(
             "p.seller_id = ? AND p.slug = ?",
             "p.id ASC",
-        ))
+        )))
         .bind(entity_types::PRODUCT)
         .bind(lang.as_str())
         .bind(fields::TITLE)
@@ -323,7 +325,7 @@ impl ProductRepo {
             product_select_with_translations(where_clause, "p.updated_at DESC, p.id ASC")
         );
 
-        let mut select_q = sqlx::query(&select_sql)
+        let mut select_q = sqlx::query(sqlx::AssertSqlSafe(select_sql))
             .bind(entity_types::PRODUCT)
             .bind(lang.as_str())
             .bind(fields::TITLE)
@@ -345,7 +347,7 @@ impl ProductRepo {
             .collect::<Result<Vec<_>, _>>()?;
 
         let count_sql = format!("SELECT COUNT(*) AS total FROM products p WHERE {where_clause}");
-        let mut count_q = sqlx::query(&count_sql).bind(seller_id);
+        let mut count_q = sqlx::query(sqlx::AssertSqlSafe(count_sql)).bind(seller_id);
         if let Some(s) = status_str {
             count_q = count_q.bind(s);
         }
