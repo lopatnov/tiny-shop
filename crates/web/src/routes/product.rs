@@ -80,6 +80,14 @@ async fn render(state: &AppState, slug: &str) -> Result<String, WebError> {
             (price) " " (card.currency)
         }
         p { (card.description) }
+        form method="post" action="/cart/add" {
+            input type="hidden" name="slug" value=(card.slug);
+            label {
+                "Кількість"
+                input type="number" name="qty" value="1" min="1" max=(orders::MAX_QTY);
+            }
+            button type="submit" { "Додати в кошик" }
+        }
     };
 
     Ok(page_shell(&card.title, head_extra, main).into_string())
