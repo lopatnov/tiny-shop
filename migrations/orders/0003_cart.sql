@@ -10,7 +10,7 @@ CREATE TABLE cart_items (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     cart_id          TEXT    NOT NULL REFERENCES carts(token_hash) ON DELETE CASCADE,
     product_id       TEXT    NOT NULL,
-    variant_id       TEXT,
+    variant_id       TEXT    CHECK (variant_id IS NULL OR length(variant_id) > 0),
     qty              INTEGER NOT NULL CHECK (qty > 0),
     -- Denormalized display snapshot, taken at add-item time.
     title            TEXT    NOT NULL,

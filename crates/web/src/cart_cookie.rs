@@ -35,9 +35,14 @@ pub fn extract_cart_token(headers: &HeaderMap) -> Option<String> {
 /// `HttpOnly` (недоступен из JS — защита от XSS-кражи токена), `SameSite=Lax` (CSRF-защита
 /// для cross-site навигации, но допускает обычные GET-переходы по ссылкам), `Path=/`
 /// (действует на весь сайт), `Max-Age` — 30 дней.
-pub fn set_cart_cookie(raw_token: &str) -> String {
+///
+/// `secure` добавляет атрибут `Secure` (cookie передаётся только по HTTPS) — вызывающая
+/// сторона выводит его из `AppState::base_url` (`https://` → `true`). На `Secure` без HTTPS
+/// браузеры cookie вообще не сохранят, поэтому атрибут добавляется только условно.
+pub fn set_cart_cookie(raw_token: &str, secure: bool) -> String {
+    let secure_attr = if secure { "; Secure" } else { "" };
     format!(
-        "{CART_COOKIE_NAME}={raw_token}; HttpOnly; SameSite=Lax; Path=/; Max-Age={MAX_AGE_SECS}"
+        "{CART_COOKIE_NAME}={raw_token}; HttpOnly; SameSite=Lax; Path=/; Max-Age={MAX_AGE_SECS}{secure_attr}"
     )
 }
 
@@ -81,11 +86,29 @@ mod tests {
 
     #[test]
     fn set_cart_cookie_includes_security_attributes() {
-        let value = set_cart_cookie("rawtoken");
+        let value = set_cart_cookie("rawtoken", false);
         assert!(value.starts_with("cart=rawtoken;"));
         assert!(value.contains("HttpOnly"));
         assert!(value.contains("SameSite=Lax"));
         assert!(value.contains("Path=/"));
         assert!(value.contains("Max-Age=2592000"));
+    }
+
+    #[test]
+    fn set_cart_cookie_secure_true_adds_secure_attribute() {
+        let value = set_cart_cookie("rawtoken", true);
+        assert!(
+            value.contains("; Secure"),
+            "secure=true should add Secure attribute: {value}"
+        );
+    }
+
+    #[test]
+    fn set_cart_cookie_secure_false_omits_secure_attribute() {
+        let value = set_cart_cookie("rawtoken", false);
+        assert!(
+            !value.contains("Secure"),
+            "secure=false should not add Secure attribute: {value}"
+        );
     }
 }

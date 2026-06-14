@@ -52,10 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with increment-on-repeat, update quantity, remove, list, clear; quantities capped at
   `MAX_QTY = 999`). The cart is identified by an opaque cart-token cookie (`cart`, `HttpOnly`,
   `SameSite=Lax`, 30 days) whose BLAKE3 hash is stored server-side — same pattern as
-  `identity::SessionRepo`. New routes: `GET /cart` (view), `POST /cart/add` (from the product
-  page's "Додати в кошик" form; `slug` + `qty`), `POST /cart/update` (`qty=0` removes the item),
-  `POST /cart/remove`. The `tiny-shop` binary now opens/migrates `orders.db` and wires
-  `CartRepo` into `AppState`.
+  `identity::SessionRepo`; the cookie also gets a `Secure` attribute automatically when
+  `TINY_SHOP_BASE_URL` is `https://`. New routes: `GET /cart` (view), `POST /cart/add` (from
+  the product page's "Додати в кошик" form; `slug` + `qty`), `POST /cart/update` (`qty=0`
+  removes the item), `POST /cart/remove`. The `tiny-shop` binary now opens/migrates
+  `orders.db` and wires `CartRepo` into `AppState`.
 
 ### Security
 

@@ -42,8 +42,9 @@ impl CartRepo {
         Self { db }
     }
 
-    /// Создать новую пустую корзину. Возвращает raw cart-токен (хранится только его хэш).
-    pub async fn create_cart(&self) -> Result<CartToken, CartError> {
+    /// Создать новую пустую корзину. Возвращает raw cart-токен (хранится только его хэш) и
+    /// саму корзину — избегает повторного `find_by_token` сразу после создания.
+    pub async fn create_cart(&self) -> Result<(CartToken, Cart), CartError> {
         let raw = generate_token();
         let token_hash = hash_token(&raw);
         let ts = now_ms();
@@ -53,7 +54,12 @@ impl CartRepo {
             .bind(ts)
             .execute(&self.db.writer)
             .await?;
-        Ok(CartToken(raw))
+        let cart = Cart {
+            token_hash,
+            created_at: ts,
+            updated_at: ts,
+        };
+        Ok((CartToken(raw), cart))
     }
 
     /// Найти корзину по raw cart-токену (хэширует и ищет по `token_hash`). `None`, если
@@ -74,7 +80,9 @@ impl CartRepo {
     }
 
     /// Добавить позицию в корзину. Повторное добавление того же (product_id, variant_id)
-    /// инкрементирует `qty` существующей строки вместо дублирования. Обновляет `carts.updated_at`.
+    /// инкрементирует `qty` существующей строки вместо дублирования и обновляет снимок
+    /// (`title`/`unit_price_minor`/`currency`/`added_at`) до актуального каталожного — иначе
+    /// строка осталась бы со снимком первого добавления. Обновляет `carts.updated_at`.
     ///
     /// Итоговый `qty` ограничен сверху `MAX_QTY` (`MIN(...)` в `ON CONFLICT`) — защита от
     /// переполнения total при многократном повторном добавлении, а не отдельная ошибка.
@@ -89,7 +97,11 @@ impl CartRepo {
              (cart_id, product_id, variant_id, qty, title, unit_price_minor, currency, added_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
              ON CONFLICT (cart_id, product_id, COALESCE(variant_id, '')) \
-             DO UPDATE SET qty = MIN(qty + excluded.qty, ?)",
+             DO UPDATE SET qty = MIN(qty + excluded.qty, ?), \
+                           title = excluded.title, \
+                           unit_price_minor = excluded.unit_price_minor, \
+                           currency = excluded.currency, \
+                           added_at = excluded.added_at",
         )
         .bind(cart_id)
         .bind(&item.product_id)
@@ -109,41 +121,54 @@ impl CartRepo {
 
     /// Изменить количество позиции, принадлежащей `cart_id`. `qty == 0` удаляет строку.
     /// Не затрагивает позиции других корзин (IDOR-защита: фильтр по `cart_id`).
+    ///
+    /// `carts.updated_at` обновляется только если строка действительно затронута — попытка
+    /// изменить позицию другой корзины (0 affected rows) не должна "трогать" чужую корзину.
     pub async fn update_qty(&self, cart_id: &str, item_id: i64, qty: i64) -> Result<(), CartError> {
         if !(0..=MAX_QTY).contains(&qty) {
             return Err(CartError::InvalidQty(qty));
         }
         let ts = now_ms();
         let mut tx = self.db.writer.begin().await?;
-        if qty == 0 {
+        let affected = if qty == 0 {
             sqlx::query("DELETE FROM cart_items WHERE id = ? AND cart_id = ?")
                 .bind(item_id)
                 .bind(cart_id)
                 .execute(&mut *tx)
-                .await?;
+                .await?
+                .rows_affected()
         } else {
             sqlx::query("UPDATE cart_items SET qty = ? WHERE id = ? AND cart_id = ?")
                 .bind(qty)
                 .bind(item_id)
                 .bind(cart_id)
                 .execute(&mut *tx)
-                .await?;
+                .await?
+                .rows_affected()
+        };
+        if affected > 0 {
+            touch_cart(&mut tx, cart_id, ts).await?;
         }
-        touch_cart(&mut tx, cart_id, ts).await?;
         tx.commit().await?;
         Ok(())
     }
 
     /// Удалить позицию, принадлежащую `cart_id`. Не затрагивает позиции других корзин.
+    ///
+    /// `carts.updated_at` обновляется только если строка действительно удалена (см.
+    /// `update_qty`).
     pub async fn remove_item(&self, cart_id: &str, item_id: i64) -> Result<(), CartError> {
         let ts = now_ms();
         let mut tx = self.db.writer.begin().await?;
-        sqlx::query("DELETE FROM cart_items WHERE id = ? AND cart_id = ?")
+        let affected = sqlx::query("DELETE FROM cart_items WHERE id = ? AND cart_id = ?")
             .bind(item_id)
             .bind(cart_id)
             .execute(&mut *tx)
-            .await?;
-        touch_cart(&mut tx, cart_id, ts).await?;
+            .await?
+            .rows_affected();
+        if affected > 0 {
+            touch_cart(&mut tx, cart_id, ts).await?;
+        }
         tx.commit().await?;
         Ok(())
     }
@@ -161,14 +186,20 @@ impl CartRepo {
     }
 
     /// Удалить все позиции корзины (например, после успешного checkout).
+    ///
+    /// `carts.updated_at` обновляется только если позиции действительно были (см.
+    /// `update_qty`) — `clear()` пустой корзины не "трогает" её.
     pub async fn clear(&self, cart_id: &str) -> Result<(), CartError> {
         let ts = now_ms();
         let mut tx = self.db.writer.begin().await?;
-        sqlx::query("DELETE FROM cart_items WHERE cart_id = ?")
+        let affected = sqlx::query("DELETE FROM cart_items WHERE cart_id = ?")
             .bind(cart_id)
             .execute(&mut *tx)
-            .await?;
-        touch_cart(&mut tx, cart_id, ts).await?;
+            .await?
+            .rows_affected();
+        if affected > 0 {
+            touch_cart(&mut tx, cart_id, ts).await?;
+        }
         tx.commit().await?;
         Ok(())
     }

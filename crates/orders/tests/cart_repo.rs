@@ -4,7 +4,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use db::{ContextDb, migrate_orders, open};
-use orders::{CartError, CartRepo, NewCartItem};
+use orders::{CartError, CartRepo, MAX_QTY, NewCartItem};
 
 struct TempDb {
     path: std::path::PathBuf,
@@ -54,16 +54,17 @@ async fn create_and_find_by_token_roundtrip() {
     let t = temp_db("create-find").await;
     let repo = CartRepo::new(t.db.clone());
 
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
+    let (token, created) = repo.create_cart().await.expect("create");
+    let found = repo
         .find_by_token(token.as_str())
         .await
         .expect("find")
         .expect("present");
 
-    assert_eq!(cart.created_at, cart.updated_at);
+    assert_eq!(created.token_hash, found.token_hash);
+    assert_eq!(found.created_at, found.updated_at);
     // token_hash stored, not the raw token.
-    assert_ne!(cart.token_hash, token.as_str());
+    assert_ne!(found.token_hash, token.as_str());
 }
 
 #[tokio::test]
@@ -86,12 +87,7 @@ async fn find_by_token_unknown_returns_none() {
 async fn add_item_then_list() {
     let t = temp_db("add-list").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (_token, cart) = repo.create_cart().await.expect("create");
 
     repo.add_item(&cart.token_hash, &new_item("prod-1", 2))
         .await
@@ -111,12 +107,7 @@ async fn add_item_then_list() {
 async fn add_item_repeated_increments_qty_not_duplicate_row() {
     let t = temp_db("add-repeat").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (_token, cart) = repo.create_cart().await.expect("create");
 
     repo.add_item(&cart.token_hash, &new_item("prod-1", 1))
         .await
@@ -131,17 +122,35 @@ async fn add_item_repeated_increments_qty_not_duplicate_row() {
 }
 
 #[tokio::test]
+async fn add_item_repeated_clamps_qty_to_max_qty() {
+    // ON CONFLICT ... DO UPDATE SET qty = MIN(qty + excluded.qty, ?) — combined qty must not
+    // exceed MAX_QTY even if individual adds stay within the per-call limit.
+    let t = temp_db("add-repeat-clamp").await;
+    let repo = CartRepo::new(t.db.clone());
+    let (_token, cart) = repo.create_cart().await.expect("create");
+
+    repo.add_item(&cart.token_hash, &new_item("prod-1", MAX_QTY))
+        .await
+        .expect("add 1");
+    repo.add_item(&cart.token_hash, &new_item("prod-1", MAX_QTY))
+        .await
+        .expect("add 2");
+
+    let items = repo.list_items(&cart.token_hash).await.expect("list");
+    assert_eq!(items.len(), 1, "should not duplicate row for same product");
+    assert_eq!(
+        items[0].qty, MAX_QTY,
+        "combined qty must be clamped to MAX_QTY"
+    );
+}
+
+#[tokio::test]
 async fn add_item_repeated_without_variant_increments() {
     // Regression guard: SQLite treats NULL != NULL in UNIQUE; cart_items_unique uses
     // COALESCE(variant_id, '') so two adds of the same variant-less product collapse.
     let t = temp_db("add-null-variant").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (_token, cart) = repo.create_cart().await.expect("create");
 
     let mut item = new_item("prod-novariant", 1);
     item.variant_id = None;
@@ -157,12 +166,7 @@ async fn add_item_repeated_without_variant_increments() {
 async fn add_item_different_variants_are_separate_rows() {
     let t = temp_db("add-variants").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (_token, cart) = repo.create_cart().await.expect("create");
 
     let mut pdf = new_item("prod-book", 1);
     pdf.variant_id = Some("pdf".to_string());
@@ -184,12 +188,7 @@ async fn add_item_different_variants_are_separate_rows() {
 async fn add_item_invalid_qty_rejected() {
     let t = temp_db("add-invalid-qty").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (_token, cart) = repo.create_cart().await.expect("create");
 
     let err = repo
         .add_item(&cart.token_hash, &new_item("prod-1", 0))
@@ -208,12 +207,7 @@ async fn add_item_invalid_qty_rejected() {
 async fn add_item_updates_cart_timestamp() {
     let t = temp_db("add-touches-cart").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (token, cart) = repo.create_cart().await.expect("create");
     let created_at = cart.created_at;
 
     repo.add_item(&cart.token_hash, &new_item("prod-1", 1))
@@ -236,12 +230,7 @@ async fn add_item_updates_cart_timestamp() {
 async fn update_qty_changes_value() {
     let t = temp_db("update-qty").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (_token, cart) = repo.create_cart().await.expect("create");
     repo.add_item(&cart.token_hash, &new_item("prod-1", 1))
         .await
         .expect("add");
@@ -259,12 +248,7 @@ async fn update_qty_changes_value() {
 async fn update_qty_zero_removes_row() {
     let t = temp_db("update-qty-zero").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (_token, cart) = repo.create_cart().await.expect("create");
     repo.add_item(&cart.token_hash, &new_item("prod-1", 1))
         .await
         .expect("add");
@@ -282,12 +266,7 @@ async fn update_qty_zero_removes_row() {
 async fn update_qty_invalid_rejected() {
     let t = temp_db("update-qty-invalid").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (_token, cart) = repo.create_cart().await.expect("create");
     repo.add_item(&cart.token_hash, &new_item("prod-1", 1))
         .await
         .expect("add");
@@ -305,18 +284,8 @@ async fn update_qty_does_not_affect_other_carts_item() {
     let t = temp_db("update-qty-isolated").await;
     let repo = CartRepo::new(t.db.clone());
 
-    let token_a = repo.create_cart().await.expect("create a");
-    let cart_a = repo
-        .find_by_token(token_a.as_str())
-        .await
-        .expect("find a")
-        .unwrap();
-    let token_b = repo.create_cart().await.expect("create b");
-    let cart_b = repo
-        .find_by_token(token_b.as_str())
-        .await
-        .expect("find b")
-        .unwrap();
+    let (_token_a, cart_a) = repo.create_cart().await.expect("create a");
+    let (_token_b, cart_b) = repo.create_cart().await.expect("create b");
 
     repo.add_item(&cart_b.token_hash, &new_item("prod-1", 1))
         .await
@@ -340,12 +309,7 @@ async fn update_qty_does_not_affect_other_carts_item() {
 async fn remove_item_removes_only_that_row() {
     let t = temp_db("remove-item").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (_token, cart) = repo.create_cart().await.expect("create");
 
     repo.add_item(&cart.token_hash, &new_item("prod-1", 1))
         .await
@@ -370,18 +334,8 @@ async fn remove_item_does_not_affect_other_carts_item() {
     let t = temp_db("remove-isolated").await;
     let repo = CartRepo::new(t.db.clone());
 
-    let token_a = repo.create_cart().await.expect("create a");
-    let cart_a = repo
-        .find_by_token(token_a.as_str())
-        .await
-        .expect("find a")
-        .unwrap();
-    let token_b = repo.create_cart().await.expect("create b");
-    let cart_b = repo
-        .find_by_token(token_b.as_str())
-        .await
-        .expect("find b")
-        .unwrap();
+    let (_token_a, cart_a) = repo.create_cart().await.expect("create a");
+    let (_token_b, cart_b) = repo.create_cart().await.expect("create b");
 
     repo.add_item(&cart_b.token_hash, &new_item("prod-1", 1))
         .await
@@ -400,12 +354,7 @@ async fn remove_item_does_not_affect_other_carts_item() {
 async fn list_items_preserves_insertion_order() {
     let t = temp_db("list-order").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (_token, cart) = repo.create_cart().await.expect("create");
 
     for i in 0..3 {
         repo.add_item(&cart.token_hash, &new_item(&format!("prod-{i}"), 1))
@@ -422,12 +371,7 @@ async fn list_items_preserves_insertion_order() {
 async fn clear_removes_all_items_but_keeps_cart() {
     let t = temp_db("clear").await;
     let repo = CartRepo::new(t.db.clone());
-    let token = repo.create_cart().await.expect("create");
-    let cart = repo
-        .find_by_token(token.as_str())
-        .await
-        .expect("find")
-        .unwrap();
+    let (token, cart) = repo.create_cart().await.expect("create");
 
     repo.add_item(&cart.token_hash, &new_item("prod-1", 1))
         .await

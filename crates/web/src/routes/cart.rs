@@ -50,7 +50,11 @@ async fn render(state: &AppState, headers: &HeaderMap) -> Result<String, WebErro
 
 /// Таблица позиций корзины с формами зміни кількості/видалення та підсумком.
 fn cart_table(items: &[CartItem]) -> Markup {
-    let total_minor: i64 = items.iter().map(|i| i.unit_price_minor * i.qty).sum();
+    // saturating_* — защита от переполнения i64 при экстремальных qty/price (MAJOR, review).
+    let total_minor: i64 = items
+        .iter()
+        .map(|i| i.unit_price_minor.saturating_mul(i.qty))
+        .fold(0i64, |acc, x| acc.saturating_add(x));
     // Усі позиції корзини T1b-1 — в одній валюті (мультивалютна корзина поза обсягом chunk'а).
     let currency = items.first().map(|i| i.currency.as_str()).unwrap_or("UAH");
 
@@ -150,6 +154,18 @@ async fn render_add(
 
     let (cart, new_token) = get_or_create_cart(state, headers).await?;
 
+    // Корзина T1b-1 — однієї валюти (див. cart_table); змішування USD/UAH тощо зламало б
+    // підсумок (сумування minor units різних валют). Перевіряємо ДО побудови `NewCartItem`,
+    // яка забирає `card.currency` за значенням.
+    let existing_items = state.carts.list_items(&cart.token_hash).await?;
+    if let Some(existing) = existing_items.first()
+        && existing.currency != card.currency
+    {
+        return Err(WebError::BadRequest(
+            "Товар у іншій валюті не можна додати до цього кошика".to_string(),
+        ));
+    }
+
     let item = NewCartItem {
         product_id: card.id,
         variant_id: None,
@@ -160,7 +176,7 @@ async fn render_add(
     };
     state.carts.add_item(&cart.token_hash, &item).await?;
 
-    Ok(redirect_to_cart(new_token))
+    Ok(redirect_to_cart(state, new_token))
 }
 
 // -----------------------------------------------------------------
@@ -197,7 +213,7 @@ async fn render_update(
             .update_qty(&cart.token_hash, form.item_id, form.qty)
             .await?;
     }
-    Ok(redirect_to_cart(None))
+    Ok(redirect_to_cart(state, None))
 }
 
 // -----------------------------------------------------------------
@@ -233,7 +249,7 @@ async fn render_remove(
             .remove_item(&cart.token_hash, form.item_id)
             .await?;
     }
-    Ok(redirect_to_cart(None))
+    Ok(redirect_to_cart(state, None))
 }
 
 // -----------------------------------------------------------------
@@ -251,9 +267,6 @@ async fn find_cart(state: &AppState, headers: &HeaderMap) -> Result<Option<Cart>
 
 /// Получить существующую корзину по cookie или создать новую. Возвращает корзину и —
 /// если она была только что создана — raw cart-токен (для `Set-Cookie`).
-///
-/// Новая запись `create_cart()` сразу видна `find_by_token` (та же БД, без транзакции между
-/// вызовами — допустимо для одного writer-соединения SQLite).
 async fn get_or_create_cart(
     state: &AppState,
     headers: &HeaderMap,
@@ -261,19 +274,23 @@ async fn get_or_create_cart(
     if let Some(cart) = find_cart(state, headers).await? {
         return Ok((cart, None));
     }
-    let token = state.carts.create_cart().await?;
-    let cart = state
-        .carts
-        .find_by_token(token.as_str())
-        .await?
-        .expect("cart just created by create_cart() must be findable by its own token");
+    let (token, cart) = state.carts.create_cart().await?;
     Ok((cart, Some(token.0)))
 }
 
 /// Редирект 303 → `/cart`, опционально с `Set-Cookie` для новой корзины.
-fn redirect_to_cart(new_token: Option<String>) -> Response {
+///
+/// `Secure`-атрибут cookie выводится из `state.base_url` (`https://` → cookie с `Secure`).
+fn redirect_to_cart(state: &AppState, new_token: Option<String>) -> Response {
     match new_token {
-        Some(raw) => ([(SET_COOKIE, set_cart_cookie(&raw))], Redirect::to("/cart")).into_response(),
+        Some(raw) => {
+            let secure = state.base_url.starts_with("https://");
+            (
+                [(SET_COOKIE, set_cart_cookie(&raw, secure))],
+                Redirect::to("/cart"),
+            )
+                .into_response()
+        }
         None => Redirect::to("/cart").into_response(),
     }
 }
