@@ -20,6 +20,7 @@ tracing = "0.1"
 
 argon2 = "0.5"
 rand = "0.10"
+rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 blake3 = "1"
 
 axum = "0.8"
