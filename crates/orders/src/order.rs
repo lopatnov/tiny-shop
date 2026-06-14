@@ -89,7 +89,9 @@ pub struct NewOrderItem {
 
 /// Контактные данные гостя для выдачи/чека (T1b-2). Изолированы в `order_contact` — отдельно
 /// от `orders`, чтобы PII (email) не раздувало основную таблицу.
-#[derive(Debug, Clone)]
+///
+/// Без `Debug` — содержит email (PII), чтобы случайный `{:?}`-лог не утёк в логи.
+#[derive(Clone)]
 pub struct OrderContact {
     pub order_id: String,
     pub email: String,
@@ -99,7 +101,9 @@ pub struct OrderContact {
 }
 
 /// Входные данные для контакта гостя на checkout.
-#[derive(Debug, Clone)]
+///
+/// Без `Debug` — содержит email (PII), чтобы случайный `{:?}`-лог не утёк в логи.
+#[derive(Clone)]
 pub struct NewOrderContact {
     pub email: String,
     pub name: Option<String>,

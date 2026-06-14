@@ -30,6 +30,8 @@ pub enum OrderError {
     Json(#[from] serde_json::Error),
     #[error("checkout requires at least one item")]
     EmptyCheckout,
+    #[error("checkout items must all use order currency '{currency}', found '{found}'")]
+    CurrencyMismatch { currency: String, found: String },
 }
 
 impl From<db::DbError> for OrderError {
@@ -151,6 +153,12 @@ impl OrderRepo {
     ) -> Result<String, OrderError> {
         if items.is_empty() {
             return Err(OrderError::EmptyCheckout);
+        }
+        if let Some(item) = items.iter().find(|item| item.currency != currency) {
+            return Err(OrderError::CurrencyMismatch {
+                currency: currency.to_string(),
+                found: item.currency.clone(),
+            });
         }
         let order_id = uuid::Uuid::new_v4().to_string();
         let created_at = now_ms();

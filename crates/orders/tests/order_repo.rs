@@ -381,3 +381,30 @@ async fn checkout_is_atomic_rollback_on_duplicate_item_id() {
         .expect("count contact");
     assert_eq!(contact_count, 0, "no contact must exist after rollback");
 }
+
+#[tokio::test]
+async fn checkout_rejects_item_with_currency_other_than_order_currency() {
+    let t = temp_db("checkout-currency-mismatch").await;
+    let repo = OrderRepo::new(t.db.clone());
+
+    let mut items = item_units("prod-a", "Електронна книга", 10_000, 1);
+    items[0].currency = "EUR".to_string();
+
+    let err = repo
+        .checkout("guest:currency", "UAH", &items, None)
+        .await
+        .expect_err("mixed-currency checkout must be rejected");
+    assert!(
+        matches!(err, OrderError::CurrencyMismatch { .. }),
+        "got {err:?}"
+    );
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders")
+        .fetch_one(&t.db.reader)
+        .await
+        .expect("count");
+    assert_eq!(
+        count, 0,
+        "no order row must be created on currency mismatch"
+    );
+}

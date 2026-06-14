@@ -199,14 +199,12 @@ async fn get_checkout_without_cart_redirects_to_cart() {
 }
 
 #[tokio::test]
-async fn get_checkout_with_empty_cart_redirects_to_cart() {
+async fn post_checkout_with_no_cookie_redirects_to_cart() {
     let t = temp_db("checkout-empty-cart").await;
     let app = router(app_state(&t).await);
 
-    // Trigger cart creation without adding an item: POST /cart/update against an unknown
-    // cart-cookie creates no cart, so simulate via a cart that was created then never
-    // populated — simplest is to just hit /checkout without ever creating a cart, covered
-    // above. This test instead verifies POST /checkout with no cookie redirects too.
+    // POST /checkout without a cart-cookie — same "no cart" path as the GET test above,
+    // but for the form-submit handler.
     let response = app
         .oneshot(
             Request::builder()

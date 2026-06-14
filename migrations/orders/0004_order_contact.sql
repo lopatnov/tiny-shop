@@ -4,7 +4,7 @@
 -- order creation.
 CREATE TABLE order_contact (
     order_id   TEXT    PRIMARY KEY REFERENCES orders(id) ON DELETE CASCADE,
-    email      TEXT    NOT NULL,
+    email      TEXT    NOT NULL CHECK (length(trim(email)) > 0),
     name       TEXT,
     created_at INTEGER NOT NULL
 );
