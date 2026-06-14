@@ -5,20 +5,25 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use catalog::{Category, SqliteCatalogSearch, TaxonomyRepo};
-use db::{ContextDb, migrate_catalog, open};
+use db::{ContextDb, migrate_catalog, migrate_orders, open};
+use orders::CartRepo;
 use tower::ServiceExt;
 use web::{AppState, router};
 
 struct TempDb {
     path: std::path::PathBuf,
     db: ContextDb,
+    orders_path: std::path::PathBuf,
+    orders_db: ContextDb,
 }
 
 impl Drop for TempDb {
     fn drop(&mut self) {
-        for suffix in ["", "-wal", "-shm"] {
-            let p = format!("{}{}", self.path.display(), suffix);
-            let _ = std::fs::remove_file(p);
+        for base in [&self.path, &self.orders_path] {
+            for suffix in ["", "-wal", "-shm"] {
+                let p = format!("{}{}", base.display(), suffix);
+                let _ = std::fs::remove_file(p);
+            }
         }
     }
 }
@@ -34,13 +39,29 @@ async fn temp_db(tag: &str) -> TempDb {
     let _ = std::fs::remove_file(&path);
     let db = open(tag, &path).await.expect("open");
     migrate_catalog(&db.writer).await.expect("migrate");
-    TempDb { path, db }
+
+    let orders_path = std::env::temp_dir().join(format!("tinyshop-web-home-orders-{nanos}-{n}.db"));
+    let _ = std::fs::remove_file(&orders_path);
+    let orders_db = open(format!("{tag}-orders"), &orders_path)
+        .await
+        .expect("open orders");
+    migrate_orders(&orders_db.writer)
+        .await
+        .expect("migrate orders");
+
+    TempDb {
+        path,
+        db,
+        orders_path,
+        orders_db,
+    }
 }
 
-async fn app_state(db: &ContextDb) -> AppState {
+async fn app_state(t: &TempDb) -> AppState {
     AppState {
-        search: SqliteCatalogSearch::new(db.clone()),
-        taxonomy: TaxonomyRepo::new(db.clone()),
+        search: SqliteCatalogSearch::new(t.db.clone()),
+        taxonomy: TaxonomyRepo::new(t.db.clone()),
+        carts: CartRepo::new(t.orders_db.clone()),
         base_url: "http://127.0.0.1:8080".to_string(),
     }
 }
@@ -93,7 +114,7 @@ async fn home_page_lists_root_categories() {
     };
     tax.create_category(&phones).await.expect("category");
 
-    let app = router(app_state(&t.db).await);
+    let app = router(app_state(&t).await);
 
     let (status, body) = get_body(app, "/").await;
 
@@ -120,7 +141,7 @@ async fn home_page_lists_root_categories() {
 #[tokio::test]
 async fn home_page_without_categories_renders_placeholder() {
     let t = temp_db("web-home-empty").await;
-    let app = router(app_state(&t.db).await);
+    let app = router(app_state(&t).await);
 
     let (status, body) = get_body(app, "/").await;
 

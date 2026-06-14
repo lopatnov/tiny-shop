@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use catalog::{CatalogProjection, SqliteCatalogSearch, TaxonomyRepo};
-use db::{ContextDb, migrate_catalog, open, relay::Dispatcher};
+use db::{ContextDb, migrate_catalog, migrate_orders, open, relay::Dispatcher};
+use orders::CartRepo;
 use shared::{DomainEvent, now_ms};
 use tower::ServiceExt;
 use web::{AppState, router};
@@ -13,13 +14,17 @@ use web::{AppState, router};
 struct TempDb {
     path: std::path::PathBuf,
     db: ContextDb,
+    orders_path: std::path::PathBuf,
+    orders_db: ContextDb,
 }
 
 impl Drop for TempDb {
     fn drop(&mut self) {
-        for suffix in ["", "-wal", "-shm"] {
-            let p = format!("{}{}", self.path.display(), suffix);
-            let _ = std::fs::remove_file(p);
+        for base in [&self.path, &self.orders_path] {
+            for suffix in ["", "-wal", "-shm"] {
+                let p = format!("{}{}", base.display(), suffix);
+                let _ = std::fs::remove_file(p);
+            }
         }
     }
 }
@@ -35,7 +40,22 @@ async fn temp_db(tag: &str) -> TempDb {
     let _ = std::fs::remove_file(&path);
     let db = open(tag, &path).await.expect("open");
     migrate_catalog(&db.writer).await.expect("migrate");
-    TempDb { path, db }
+
+    let orders_path = std::env::temp_dir().join(format!("tinyshop-web-orders-{nanos}-{n}.db"));
+    let _ = std::fs::remove_file(&orders_path);
+    let orders_db = open(format!("{tag}-orders"), &orders_path)
+        .await
+        .expect("open orders");
+    migrate_orders(&orders_db.writer)
+        .await
+        .expect("migrate orders");
+
+    TempDb {
+        path,
+        db,
+        orders_path,
+        orders_db,
+    }
 }
 
 fn event(id: i64, event_type: &str, payload: serde_json::Value) -> DomainEvent {
@@ -49,10 +69,11 @@ fn event(id: i64, event_type: &str, payload: serde_json::Value) -> DomainEvent {
     }
 }
 
-async fn app_state(db: &ContextDb) -> AppState {
+async fn app_state(t: &TempDb) -> AppState {
     AppState {
-        search: SqliteCatalogSearch::new(db.clone()),
-        taxonomy: TaxonomyRepo::new(db.clone()),
+        search: SqliteCatalogSearch::new(t.db.clone()),
+        taxonomy: TaxonomyRepo::new(t.db.clone()),
+        carts: CartRepo::new(t.orders_db.clone()),
         base_url: "http://127.0.0.1:8080".to_string(),
     }
 }
@@ -88,7 +109,7 @@ async fn product_page_returns_html_with_jsonld() {
     .await
     .expect("published");
 
-    let app = router(app_state(&t.db).await);
+    let app = router(app_state(&t).await);
 
     let response = app
         .oneshot(
@@ -154,7 +175,7 @@ fn extract_jsonld_blocks(body: &str) -> Vec<serde_json::Value> {
 #[tokio::test]
 async fn unknown_slug_returns_404() {
     let t = temp_db("web-product-404").await;
-    let app = router(app_state(&t.db).await);
+    let app = router(app_state(&t).await);
 
     let response = app
         .oneshot(

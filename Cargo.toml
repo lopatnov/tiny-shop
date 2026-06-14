@@ -33,4 +33,5 @@ tower = { version = "0.5", features = ["util"] }
 shared = { path = "crates/shared" }
 db = { path = "crates/db" }
 catalog = { path = "crates/catalog" }
+orders = { path = "crates/orders" }
 web = { path = "crates/web" }
