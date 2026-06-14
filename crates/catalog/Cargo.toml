@@ -14,7 +14,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
-cucumber = "0.21"
+cucumber = "0.23"
 
 [[test]]
 name = "bdd"

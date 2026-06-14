@@ -9,7 +9,8 @@ use catalog::{
     Attribute, AttributeOption, CatalogProjection, Category, DataType, Filter, FilterType,
     SqliteCatalogSearch, TaxonomyRepo,
 };
-use db::{ContextDb, migrate_catalog, open, relay::Dispatcher};
+use db::{ContextDb, migrate_catalog, migrate_orders, open, relay::Dispatcher};
+use orders::CartRepo;
 use shared::{DomainEvent, now_ms};
 use tower::ServiceExt;
 use web::{AppState, router};
@@ -17,13 +18,17 @@ use web::{AppState, router};
 struct TempDb {
     path: std::path::PathBuf,
     db: ContextDb,
+    orders_path: std::path::PathBuf,
+    orders_db: ContextDb,
 }
 
 impl Drop for TempDb {
     fn drop(&mut self) {
-        for suffix in ["", "-wal", "-shm"] {
-            let p = format!("{}{}", self.path.display(), suffix);
-            let _ = std::fs::remove_file(p);
+        for base in [&self.path, &self.orders_path] {
+            for suffix in ["", "-wal", "-shm"] {
+                let p = format!("{}{}", base.display(), suffix);
+                let _ = std::fs::remove_file(p);
+            }
         }
     }
 }
@@ -39,7 +44,22 @@ async fn temp_db(tag: &str) -> TempDb {
     let _ = std::fs::remove_file(&path);
     let db = open(tag, &path).await.expect("open");
     migrate_catalog(&db.writer).await.expect("migrate");
-    TempDb { path, db }
+
+    let orders_path = std::env::temp_dir().join(format!("tinyshop-web-cat-orders-{nanos}-{n}.db"));
+    let _ = std::fs::remove_file(&orders_path);
+    let orders_db = open(format!("{tag}-orders"), &orders_path)
+        .await
+        .expect("open orders");
+    migrate_orders(&orders_db.writer)
+        .await
+        .expect("migrate orders");
+
+    TempDb {
+        path,
+        db,
+        orders_path,
+        orders_db,
+    }
 }
 
 fn event(id: i64, event_type: &str, payload: serde_json::Value) -> DomainEvent {
@@ -53,10 +73,11 @@ fn event(id: i64, event_type: &str, payload: serde_json::Value) -> DomainEvent {
     }
 }
 
-async fn app_state(db: &ContextDb) -> AppState {
+async fn app_state(t: &TempDb) -> AppState {
     AppState {
-        search: SqliteCatalogSearch::new(db.clone()),
-        taxonomy: TaxonomyRepo::new(db.clone()),
+        search: SqliteCatalogSearch::new(t.db.clone()),
+        taxonomy: TaxonomyRepo::new(t.db.clone()),
+        carts: CartRepo::new(t.orders_db.clone()),
         base_url: "http://127.0.0.1:8080".to_string(),
     }
 }
@@ -162,7 +183,7 @@ async fn category_page_with_products_returns_html_with_jsonld() {
     )
     .await;
 
-    let app = router(app_state(&t.db).await);
+    let app = router(app_state(&t).await);
 
     let response = app
         .oneshot(
@@ -233,7 +254,7 @@ async fn category_page_without_products_renders_empty_state() {
 
     let (category, _attribute) = seed_category(&tax).await;
 
-    let app = router(app_state(&t.db).await);
+    let app = router(app_state(&t).await);
 
     let response = app
         .oneshot(
@@ -272,7 +293,7 @@ async fn category_page_without_products_renders_empty_state() {
 #[tokio::test]
 async fn unknown_category_slug_returns_404() {
     let t = temp_db("web-category-404").await;
-    let app = router(app_state(&t.db).await);
+    let app = router(app_state(&t).await);
 
     let response = app
         .oneshot(
@@ -348,7 +369,7 @@ async fn category_filter_checkbox_or_narrows_results_and_marks_checked_option() 
     )
     .await;
 
-    let app = router(app_state(&t.db).await);
+    let app = router(app_state(&t).await);
 
     let response = app
         .oneshot(
@@ -430,7 +451,7 @@ async fn category_page_without_filter_params_shows_all_with_unchecked_form() {
     )
     .await;
 
-    let app = router(app_state(&t.db).await);
+    let app = router(app_state(&t).await);
 
     let response = app
         .oneshot(
@@ -503,7 +524,7 @@ async fn category_filter_range_price_narrows_results() {
     )
     .await;
 
-    let app = router(app_state(&t.db).await);
+    let app = router(app_state(&t).await);
 
     let response = app
         .oneshot(
@@ -558,7 +579,7 @@ async fn category_filter_unknown_and_garbage_params_render_gracefully() {
     )
     .await;
 
-    let app = router(app_state(&t.db).await);
+    let app = router(app_state(&t).await);
 
     let response = app
         .oneshot(

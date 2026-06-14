@@ -98,9 +98,9 @@ impl SessionRepo {
 }
 
 fn generate_token() -> String {
-    use rand::Rng;
-    use rand::distributions::Alphanumeric;
-    rand::thread_rng()
+    use rand::RngExt;
+    use rand::distr::Alphanumeric;
+    rand::rng()
         .sample_iter(&Alphanumeric)
         .take(48)
         .map(char::from)

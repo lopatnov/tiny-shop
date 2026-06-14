@@ -1,10 +1,9 @@
-//! `tiny-shop` — bootstrap бинарника: поднимает контексты `catalog`/`product`, relay
-//! проекции каталога и Axum SSR-сервер (T1a-6).
+//! `tiny-shop` — bootstrap бинарника: поднимает контексты `catalog`/`product`/`orders`, relay
+//! проекции каталога и Axum SSR-сервер (T1a-6 + T1b-1 корзина).
 //!
-//! `identity`/`orders` — отдельные контексты с собственными файлами БД (см.
-//! `.claude/docs/design-1a.md` §1), но в T1a-6 ещё не используются ни одним маршрутом —
-//! их открытие/миграция и подключение к auth/orders-роутам остаются для 1b, чтобы не заводить
-//! неиспользуемое состояние раньше необходимости (Простота).
+//! `identity` — отдельный контекст со своим файлом БД (см. `.claude/docs/design-1a.md` §1), но
+//! пока не используется ни одним маршрутом — его открытие/миграция и подключение к auth-роутам
+//! остаются на потом, чтобы не заводить неиспользуемое состояние раньше необходимости (Простота).
 
 use std::time::Duration;
 
@@ -17,9 +16,11 @@ async fn main() -> anyhow::Result<()> {
 
     let catalog_db = db::open("catalog", format!("{data_dir}/catalog.db")).await?;
     let product_db = db::open("product", format!("{data_dir}/product.db")).await?;
+    let orders_db = db::open("orders", format!("{data_dir}/orders.db")).await?;
 
     db::migrate_catalog(&catalog_db.writer).await?;
     db::migrate_product(&product_db.writer).await?;
+    db::migrate_orders(&orders_db.writer).await?;
 
     // Relay: события Product* из product.outbox → проекция каталога (search/projection).
     let projection = catalog::CatalogProjection::new(catalog_db.clone());
@@ -44,6 +45,7 @@ async fn main() -> anyhow::Result<()> {
     let state = web::AppState {
         search: catalog::SqliteCatalogSearch::new(catalog_db.clone()),
         taxonomy: catalog::TaxonomyRepo::new(catalog_db.clone()),
+        carts: orders::CartRepo::new(orders_db.clone()),
         base_url: std::env::var("TINY_SHOP_BASE_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8080".into()),
     };

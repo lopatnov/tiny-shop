@@ -11,14 +11,42 @@ use crate::view::layout::page_shell;
 pub enum WebError {
     #[error("not found")]
     NotFound,
+    #[error("bad request: {0}")]
+    BadRequest(String),
     #[error("internal error: {0}")]
     Internal(String),
+}
+
+/// `orders::CartError` → `WebError`: `InvalidQty` — некорректный ввод пользователя (400),
+/// прочие (`Db`) — внутренняя ошибка (500).
+impl From<orders::CartError> for WebError {
+    fn from(err: orders::CartError) -> Self {
+        match err {
+            orders::CartError::InvalidQty(qty) => {
+                WebError::BadRequest(format!("invalid quantity: {qty}"))
+            }
+            orders::CartError::Db(e) => WebError::Internal(e.to_string()),
+        }
+    }
 }
 
 impl IntoResponse for WebError {
     fn into_response(self) -> Response {
         match self {
             WebError::NotFound => not_found_response(),
+            WebError::BadRequest(msg) => {
+                tracing::warn!(error = %msg, "bad request");
+                let body = page_shell(
+                    "Некоректний запит",
+                    html! {},
+                    html! {
+                        h1 { "Некоректний запит" }
+                        p { "Дані форми некоректні. Перевірте введені значення і спробуйте ще раз." }
+                        p { a href="/cart" { "До кошика" } }
+                    },
+                );
+                (StatusCode::BAD_REQUEST, Html(body.into_string())).into_response()
+            }
             WebError::Internal(msg) => {
                 tracing::error!(error = %msg, "internal server error");
                 let body = page_shell(

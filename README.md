@@ -4,8 +4,8 @@ A marketplace for digital goods, designed to run on low-resource hardware (targe
 Celeron with ~6 GB RAM). Backend is a Rust modular monolith; persistence is per-context SQLite
 files (WAL mode) with a transactional outbox + in-process relay for cross-context projections.
 
-> Status: early development (Phase 1a — foundation). See "Current status & limitations" below
-> before expecting a working storefront.
+> Status: early development (Phase 1b — transactions, chunk 1: cart). See "Current status &
+> limitations" below before expecting a working storefront.
 
 ## Requirements
 
@@ -50,14 +50,21 @@ On startup the binary:
 
 ## Current status & limitations
 
-This is Phase 1a (foundation). The server currently exposes:
+Phase 1a (foundation) is complete; Phase 1b (transactions) is underway. The server currently
+exposes:
 - `GET /` — home page with navigation links to root categories;
-- `GET /p/{slug}` — product page with `Product`/`Offer`/`BreadcrumbList` JSON-LD;
+- `GET /p/{slug}` — product page with `Product`/`Offer`/`BreadcrumbList` JSON-LD and an
+  "Додати в кошик" (add to cart) form;
 - `GET /c/{slug}` — category listing page with a product grid, pagination (`?page=`),
   `ItemList`/`BreadcrumbList` JSON-LD, and a keyboard-operable `<form>` of category-specific
   facet/attribute filters (checkbox/multi-select via `?attr_<id>=`, numeric ranges via
   `?attr_<id>_min`/`_max`, and price range via `?price_min`/`?price_max`, all in major currency
   units); active filters are preserved across pagination links;
+- `GET /cart` — view the current anonymous cart;
+- `POST /cart/add` — add a product (`slug` + `qty`) to the cart, creating an anonymous cart
+  (`cart` cookie, `HttpOnly`/`SameSite=Lax`, 30 days) on first use;
+- `POST /cart/update` — change a cart item's quantity (`qty=0` removes the item);
+- `POST /cart/remove` — remove a cart item;
 - `GET /sitemap.xml` — sitemap listing the home page, the full category tree, and all
   published products;
 - `GET /robots.txt` — crawler directives pointing at the sitemap;
@@ -67,6 +74,8 @@ This is Phase 1a (foundation). The server currently exposes:
 category/product pages will always return `404` until data is inserted manually (e.g. via tests
 or direct SQL against `product.db`/`catalog.db`). This is expected at this stage — seller
 onboarding, product creation UI, checkout, and digital delivery are planned for later phases.
+The cart works against whatever products exist in the catalog projection, but items cannot yet
+be purchased — checkout is the next 1b chunk.
 
 For the broader roadmap, see `.claude/backlog/roadmap.md`.
 
@@ -83,7 +92,7 @@ in-process relay (no shared transactions, no cross-file joins).
 | `identity` | Accounts, roles, sessions, sellers (Argon2id passwords, BLAKE3 session tokens). |
 | `catalog` | Category/attribute/filter taxonomy, product projection, FTS5 search. |
 | `product` | Seller-owned products and digital delivery configuration. |
-| `orders` | Orders/order items skeleton (checkout logic comes later). |
+| `orders` | Orders/order items skeleton; anonymous cart (`carts`/`cart_items` in `orders.db`, cart-token cookie) — checkout logic comes later. |
 | `payments` | Payment provider port/types (no adapter yet). |
 | `web` | Axum + maud SSR pages, routing, JSON-LD. |
 | `tiny-shop` | Binary: wires everything together and runs the server. |
