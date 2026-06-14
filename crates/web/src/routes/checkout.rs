@@ -164,7 +164,8 @@ async fn render_submit(
 
     // Свежий снимок цены/seller_id из проекции каталога — позиция корзины может хранить
     // устаревшую цену (товар переопубликован с момента добавления).
-    let mut order_items = Vec::with_capacity(cart_items.len());
+    let total_qty: usize = cart_items.iter().map(|item| item.qty.max(0) as usize).sum();
+    let mut order_items = Vec::with_capacity(total_qty);
     for cart_item in &cart_items {
         let Some(card) = state
             .search
@@ -172,9 +173,14 @@ async fn render_submit(
             .await
             .map_err(|e| WebError::Internal(e.to_string()))?
         else {
-            // Товар знято з публікації між додаванням у кошик і checkout — пропускаємо позицію
-            // (best-effort: краще оформити решту замовлення, ніж відмовити повністю).
-            continue;
+            // Товар знято з публікації між додаванням у кошик і checkout — підсумок на сторінці
+            // показував цю позицію, тож тихо пропускати її було б розбіжністю між тим, що
+            // побачив користувач, і тим, що реально замовлено. Повертаємо помилку — користувач
+            // повертається в кошик і прибирає недоступну позицію свідомо.
+            return Err(WebError::BadRequest(format!(
+                "Товар \"{}\" більше не доступний для замовлення. Будь ласка, поверніться до кошика.",
+                cart_item.title
+            )));
         };
         // Одна позиція корзини з qty=N розгортається в N рядків order_items (T1b-2): кожен
         // рядок — незмінний снімок ОДНІЄЇ одиниці товару (схема `order_items` без стовпця qty,
@@ -201,6 +207,14 @@ async fn render_submit(
     }
 
     let currency = order_items[0].currency.clone();
+    if order_items.iter().any(|item| item.currency != currency) {
+        // Товари в одній корзині оновили статус і тепер у різних валютах (рідкий випадок —
+        // зміна валюти товару продавцем між додаванням у кошик і checkout). total_minor у
+        // одній валюті був би некоректним, тож відмовляємо явно замість тихого змішування.
+        return Err(WebError::BadRequest(
+            "товари в кошику мають різні валюти, оформлення неможливе".to_string(),
+        ));
+    }
     let buyer_id = guest_buyer_id();
     let order_id = state
         .orders
@@ -209,8 +223,9 @@ async fn render_submit(
 
     state.carts.clear(&cart.token_hash).await?;
 
+    let secure = state.base_url.starts_with("https://");
     Ok((
-        [(SET_COOKIE, expire_cart_cookie())],
+        [(SET_COOKIE, expire_cart_cookie(secure))],
         Redirect::to(&format!("/checkout/done/{order_id}")),
     )
         .into_response())
