@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug tiny-shop",
+      "cargo": {
+        "args": ["build", "--bin=tiny-shop", "--package=tiny-shop"],
+        "filter": {
+          "name": "tiny-shop",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_LOG": "debug"
+      },
+      "sourceLanguages": ["rust"]
+    }
+  ]
+}
