@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "rust-lang.rust-analyzer",
+    "vadimcn.vscode-lldb",
+    "tamasfe.even-better-toml",
+    "sonarsource.sonarlint-vscode"
+  ],
+  "unwantedRecommendations": [
+    "llvm-vs-code-extensions.lldb-dap"
+  ]
+}
