@@ -68,6 +68,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cart` cookie, redirects to the confirmation page), `GET /checkout/done/{order_id}`
   (confirmation page with order number, items, and total). Guests get a synthetic
   `buyer_id` of the form `guest:<uuid>`; login-checkout is a separate follow-up.
+- **Base visual styling (T-UI-1)**: Bootstrap 5.3.3 is vendored locally at
+  `crates/web/assets/vendor/bootstrap/` (CSS only, MIT-licensed, license file included) and
+  served alongside a new brand stylesheet `crates/web/assets/css/vuriy.css` (Vuriy color
+  tokens overriding `--bs-primary`/`--bs-link-color`/`--bs-body-bg`). The whole `assets/`
+  directory is now served at `/assets/*` (previously only `/assets/brand/*`). `page_shell`
+  gained the stylesheet `<link>`s, a styled `<header>` with the brand logo, a `.container`
+  wrapper around `<main>`, and a `<footer>`. All pages (home, category, product, cart,
+  checkout) now use Bootstrap components (cards, grid, tables, forms, breadcrumbs,
+  pagination) on top of the existing semantic HTML/ARIA/Schema.org markup — no structural or
+  behavioral changes.
 
 ### Security
 

@@ -71,22 +71,28 @@ async fn render(state: &AppState, slug: &str) -> Result<String, WebError> {
 
     let main = html! {
         (breadcrumb_nav(&crumbs))
-        h1 { (card.title) }
-        @if let Some(thumb) = &card.thumb {
-            img src=(thumb) alt=(card.title);
-        }
-        p {
-            span { "Ціна: " }
-            (price) " " (card.currency)
-        }
-        p { (card.description) }
-        form method="post" action="/cart/add" {
-            input type="hidden" name="slug" value=(card.slug);
-            label {
-                "Кількість"
-                input type="number" name="qty" value="1" min="1" max=(orders::MAX_QTY);
+        div class="row" {
+            div class="col-md-8" {
+                h1 { (card.title) }
+                @if let Some(thumb) = &card.thumb {
+                    img src=(thumb) alt=(card.title) class="img-fluid mb-3";
+                }
+                p class="fs-3 fw-bold" {
+                    span { "Ціна: " }
+                    (price) " " (card.currency)
+                }
+                p { (card.description) }
+                form method="post" action="/cart/add" class="row g-2 align-items-end" {
+                    input type="hidden" name="slug" value=(card.slug);
+                    div class="col-auto" {
+                        label class="form-label" for="qty" { "Кількість" }
+                        input type="number" id="qty" name="qty" value="1" min="1" max=(orders::MAX_QTY) class="form-control";
+                    }
+                    div class="col-auto" {
+                        button type="submit" class="btn btn-primary" { "Додати в кошик" }
+                    }
+                }
             }
-            button type="submit" { "Додати в кошик" }
         }
     };
 

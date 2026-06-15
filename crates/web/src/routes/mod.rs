@@ -29,7 +29,7 @@ pub fn router() -> Router<AppState> {
         .route("/sitemap.xml", get(sitemap::show))
         .route("/robots.txt", get(robots::show))
         .nest_service(
-            "/assets/brand",
-            ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/brand")),
+            "/assets",
+            ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets")),
         )
 }
