@@ -7,11 +7,11 @@ use maud::{Markup, html};
 pub fn breadcrumb_nav(items: &[(String, Option<String>)]) -> Markup {
     html! {
         nav aria-label="Хлібні крихти" {
-            ol {
+            ol class="breadcrumb" {
                 @for (name, url) in items {
                     @match url {
-                        Some(href) => li { a href=(href) { (name) } },
-                        None => li aria-current="page" { (name) },
+                        Some(href) => li class="breadcrumb-item" { a href=(href) { (name) } },
+                        None => li class="breadcrumb-item active" aria-current="page" { (name) },
                     }
                 }
             }

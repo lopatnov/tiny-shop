@@ -44,7 +44,7 @@ async fn render(state: &AppState, headers: &HeaderMap) -> Result<String, WebErro
     } else {
         html! {
             (cart_table(&items))
-            p { a href="/checkout" { "Оформити замовлення" } }
+            p { a href="/checkout" class="btn btn-primary" { "Оформити замовлення" } }
         }
     };
 
@@ -63,7 +63,7 @@ fn cart_table(items: &[CartItem]) -> Markup {
 
     html! {
         h1 { "Кошик" }
-        table {
+        table class="table table-striped align-middle" {
             caption { "Товари в кошику" }
             thead {
                 tr {
@@ -79,16 +79,17 @@ fn cart_table(items: &[CartItem]) -> Markup {
                     tr {
                         td { (item.title) }
                         td {
-                            form method="post" action="/cart/update" {
+                            form method="post" action="/cart/update" class="input-group input-group-sm" {
                                 input
                                     type="number"
                                     name="qty"
                                     value=(item.qty)
                                     min="0"
                                     max=(orders::MAX_QTY)
-                                    aria-label={ "Кількість для " (item.title) };
+                                    aria-label={ "Кількість для " (item.title) }
+                                    class="form-control";
                                 input type="hidden" name="item_id" value=(item.id);
-                                button type="submit" { "Оновити" }
+                                button type="submit" class="btn btn-outline-secondary btn-sm" { "Оновити" }
                             }
                         }
                         td { (jsonld::format_price_minor(item.unit_price_minor)) " " (item.currency) }
@@ -96,16 +97,16 @@ fn cart_table(items: &[CartItem]) -> Markup {
                         td {
                             form method="post" action="/cart/remove" {
                                 input type="hidden" name="item_id" value=(item.id);
-                                button type="submit" { "Видалити" }
+                                button type="submit" class="btn btn-outline-danger btn-sm" { "Видалити" }
                             }
                         }
                     }
                 }
             }
-            tfoot {
+            tfoot class="table-group-divider" {
                 tr {
-                    th scope="row" colspan="3" { "Разом" }
-                    td colspan="2" { (jsonld::format_price_minor(total_minor)) " " (currency) }
+                    th scope="row" colspan="3" class="fw-bold" { "Разом" }
+                    td colspan="2" class="fw-bold" { (jsonld::format_price_minor(total_minor)) " " (currency) }
                 }
             }
         }

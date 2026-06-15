@@ -1,0 +1,36 @@
+/* Vuriy — бренд-токены поверх Bootstrap 5 (T-UI-1). Минимальный кастомный CSS. */
+
+:root {
+  --vuriy-primary: #262b3d;
+  --vuriy-primary-hover: #3a4060;
+  --vuriy-bg: #f8f9fb;
+  --vuriy-surface: #ffffff;
+  --vuriy-border: #dee2e6;
+
+  --bs-primary: var(--vuriy-primary);
+  --bs-primary-rgb: 38, 43, 61;
+  --bs-link-color: var(--vuriy-primary);
+  --bs-link-color-rgb: 38, 43, 61;
+  --bs-link-hover-color: var(--vuriy-primary-hover);
+  --bs-link-hover-color-rgb: 58, 64, 96;
+  --bs-body-bg: var(--vuriy-bg);
+}
+
+.btn-primary {
+  --bs-btn-bg: var(--vuriy-primary);
+  --bs-btn-border-color: var(--vuriy-primary);
+  --bs-btn-hover-bg: var(--vuriy-primary-hover);
+  --bs-btn-hover-border-color: var(--vuriy-primary-hover);
+  --bs-btn-active-bg: var(--vuriy-primary-hover);
+  --bs-btn-active-border-color: var(--vuriy-primary-hover);
+}
+
+.brand-logo {
+  height: 40px;
+  width: auto;
+}
+
+footer {
+  border-top: 1px solid var(--vuriy-border);
+  background-color: var(--vuriy-bg);
+}
