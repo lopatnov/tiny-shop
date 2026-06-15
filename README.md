@@ -74,7 +74,9 @@ exposes:
 - `GET /sitemap.xml` — sitemap listing the home page, the full category tree, and all
   published products;
 - `GET /robots.txt` — crawler directives pointing at the sitemap;
-- static brand assets (favicons, logo) served at `/assets/brand/*`.
+- static assets served at `/assets/*`: brand (favicons, logo) under `/assets/brand/*`,
+  vendored Bootstrap 5 CSS under `/assets/vendor/bootstrap/*`, and the brand stylesheet at
+  `/assets/css/vuriy.css`.
 
 **There is no seeding mechanism or admin UI yet.** Databases are empty on first run, so the
 category/product pages will always return `404` until data is inserted manually (e.g. via tests

@@ -154,38 +154,68 @@ async fn render(
         (breadcrumb_nav(&crumbs))
         h1 { (category.name) }
         @if let Some(form) = &filter_form {
-            (form)
+            div class="row" {
+                div class="col-lg-3" {
+                    (form)
+                }
+                div class="col-lg-9" {
+                    (product_list(&result.items, slug, raw, page, has_prev, has_next))
+                }
+            }
+        } @else {
+            (product_list(&result.items, slug, raw, page, has_prev, has_next))
         }
-        @if result.items.is_empty() {
+    };
+
+    Ok(page_shell(&category.name, head_extra, main).into_string())
+}
+
+/// Список товаров категории (карточки + пагинация) или пустое состояние.
+fn product_list(
+    items: &[catalog::ProductCard],
+    slug: &str,
+    raw: &[(String, String)],
+    page: u32,
+    has_prev: bool,
+    has_next: bool,
+) -> Markup {
+    html! {
+        @if items.is_empty() {
             p { "У цій категорії ще немає товарів." }
         } @else {
-            ul {
-                @for item in &result.items {
-                    li {
-                        a href=(format!("/p/{}", item.slug)) {
+            div class="row g-3" {
+                @for item in items {
+                    div class="col-12 col-sm-6 col-md-4 col-lg-3" {
+                        a href=(format!("/p/{}", item.slug)) class="card h-100 text-decoration-none" {
                             @if let Some(thumb) = &item.thumb {
-                                img src=(thumb) alt=(item.title);
+                                img src=(thumb) alt="" class="card-img-top";
                             }
-                            span { (item.title) }
-                        }
-                        p {
-                            (jsonld::format_price_minor(item.price_minor)) " " (item.currency)
+                            div class="card-body" {
+                                h2 class="card-title h6" { (item.title) }
+                                p class="card-text fw-semibold" {
+                                    (jsonld::format_price_minor(item.price_minor)) " " (item.currency)
+                                }
+                            }
                         }
                     }
                 }
             }
             nav aria-label="Сторінки" {
-                @if has_prev {
-                    a href=(pagination_href(slug, raw, page - 1)) { "Попередня" }
-                }
-                @if has_next {
-                    a href=(pagination_href(slug, raw, page.saturating_add(1))) { "Наступна" }
+                ul class="pagination" {
+                    @if has_prev {
+                        li class="page-item" {
+                            a class="page-link" href=(pagination_href(slug, raw, page - 1)) { "Попередня" }
+                        }
+                    }
+                    @if has_next {
+                        li class="page-item" {
+                            a class="page-link" href=(pagination_href(slug, raw, page.saturating_add(1))) { "Наступна" }
+                        }
+                    }
                 }
             }
         }
-    };
-
-    Ok(page_shell(&category.name, head_extra, main).into_string())
+    }
 }
 
 // -----------------------------------------------------------------
@@ -340,7 +370,7 @@ async fn render_filter_form(
             @for fieldset in &fieldsets {
                 (fieldset)
             }
-            button type="submit" { "Застосувати" }
+            button type="submit" class="btn btn-primary btn-sm" { "Застосувати" }
         }
     }))
 }
@@ -362,15 +392,17 @@ fn checkbox_fieldset(
 ) -> Markup {
     html! {
         fieldset {
-            legend { (legend) }
+            legend class="form-label fw-semibold" { (legend) }
             @for option in options {
-                label {
+                div class="form-check" {
                     input
                         type="checkbox"
                         name=(param)
                         value=(option.value)
-                        checked[selected.contains(&option.value.as_str())];
-                    (option.value)
+                        checked[selected.contains(&option.value.as_str())]
+                        class="form-check-input"
+                        id={ (param) "-" (option.id) };
+                    label class="form-check-label" for={ (param) "-" (option.id) } { (option.value) }
                 }
             }
         }
@@ -390,14 +422,16 @@ fn range_fieldset(
     let max_value = numeric_value_for(raw, max_param);
     html! {
         fieldset {
-            legend { (legend) }
-            label {
-                "Від "
-                input type="number" step="any" name=(min_param) value=[min_value];
-            }
-            label {
-                "До "
-                input type="number" step="any" name=(max_param) value=[max_value];
+            legend class="form-label fw-semibold" { (legend) }
+            div class="row g-2" {
+                div class="col-6" {
+                    label class="form-label" for=(min_param) { "Від" }
+                    input type="number" step="any" name=(min_param) value=[min_value] id=(min_param) class="form-control";
+                }
+                div class="col-6" {
+                    label class="form-label" for=(max_param) { "До" }
+                    input type="number" step="any" name=(max_param) value=[max_value] id=(max_param) class="form-control";
+                }
             }
         }
     }

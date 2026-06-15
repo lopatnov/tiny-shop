@@ -67,7 +67,7 @@ fn summary_table(items: &[CartItem]) -> Markup {
     let currency = items.first().map(|i| i.currency.as_str()).unwrap_or("UAH");
 
     html! {
-        table {
+        table class="table table-striped align-middle" {
             caption { "Товари в замовленні" }
             thead {
                 tr {
@@ -87,10 +87,10 @@ fn summary_table(items: &[CartItem]) -> Markup {
                     }
                 }
             }
-            tfoot {
+            tfoot class="table-group-divider" {
                 tr {
-                    th scope="row" colspan="3" { "Разом" }
-                    td { (format_price_minor(total_minor)) " " (currency) }
+                    th scope="row" colspan="3" class="fw-bold" { "Разом" }
+                    td class="fw-bold" { (format_price_minor(total_minor)) " " (currency) }
                 }
             }
         }
@@ -104,17 +104,19 @@ fn contact_form(prefill: Option<&ContactForm>) -> Markup {
     let name = prefill.and_then(|f| f.name.as_deref()).unwrap_or("");
 
     html! {
-        form method="post" action="/checkout" {
-            div {
-                label for="email" { "Електронна пошта" }
-                input type="email" id="email" name="email" value=(email)
-                    maxlength=(MAX_EMAIL_LEN) required;
+        form method="post" action="/checkout" class="row g-3" {
+            div class="col-md-6" {
+                label for="email" class="form-label" { "Електронна пошта (обов'язково)" }
+                input type="email" id="email" name="email" value=(email) class="form-control"
+                    maxlength=(MAX_EMAIL_LEN) required aria-required="true";
             }
-            div {
-                label for="name" { "Ім'я (необов'язково)" }
-                input type="text" id="name" name="name" value=(name) maxlength=(MAX_NAME_LEN);
+            div class="col-md-6" {
+                label for="name" class="form-label" { "Ім'я (необов'язково)" }
+                input type="text" id="name" name="name" value=(name) maxlength=(MAX_NAME_LEN) class="form-control";
             }
-            button type="submit" { "Оформити замовлення" }
+            div class="col-12" {
+                button type="submit" class="btn btn-primary btn-lg" { "Оформити замовлення" }
+            }
         }
     }
 }
@@ -280,7 +282,7 @@ fn invalid_contact_response(items: &[CartItem], form: &ContactForm, message: &st
     let main = html! {
         h1 { "Оформлення замовлення" }
         (summary_table(items))
-        p role="alert" { (message) }
+        p role="alert" class="alert alert-danger" { (message) }
         (contact_form(Some(form)))
         p { a href="/cart" { "Назад до кошика" } }
     };
@@ -327,7 +329,7 @@ async fn render_done(state: &AppState, order_id: &str) -> Result<String, WebErro
 
 fn order_summary(order: &Order) -> Markup {
     html! {
-        table {
+        table class="table table-striped align-middle" {
             caption { "Склад замовлення" }
             thead {
                 tr {
@@ -343,10 +345,10 @@ fn order_summary(order: &Order) -> Markup {
                     }
                 }
             }
-            tfoot {
+            tfoot class="table-group-divider" {
                 tr {
-                    th scope="row" { "Разом" }
-                    td { (format_price_minor(order.total_minor)) " " (order.currency) }
+                    th scope="row" class="fw-bold" { "Разом" }
+                    td class="fw-bold" { (format_price_minor(order.total_minor)) " " (order.currency) }
                 }
             }
         }
