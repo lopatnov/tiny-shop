@@ -153,12 +153,10 @@ async fn render(
     let main = html! {
         (breadcrumb_nav(&crumbs))
         h1 { (category.name) }
-        @if filter_form.is_some() {
+        @if let Some(form) = &filter_form {
             div class="row" {
                 div class="col-lg-3" {
-                    @if let Some(form) = &filter_form {
-                        (form)
-                    }
+                    (form)
                 }
                 div class="col-lg-9" {
                     (product_list(&result.items, slug, raw, page, has_prev, has_next))
@@ -190,7 +188,7 @@ fn product_list(
                     div class="col-12 col-sm-6 col-md-4 col-lg-3" {
                         a href=(format!("/p/{}", item.slug)) class="card h-100 text-decoration-none" {
                             @if let Some(thumb) = &item.thumb {
-                                img src=(thumb) alt=(item.title) class="card-img-top";
+                                img src=(thumb) alt="" class="card-img-top";
                             }
                             div class="card-body" {
                                 h2 class="card-title h6" { (item.title) }
@@ -403,8 +401,8 @@ fn checkbox_fieldset(
                         value=(option.value)
                         checked[selected.contains(&option.value.as_str())]
                         class="form-check-input"
-                        id={ (param) "-" (option.value) };
-                    label class="form-check-label" for={ (param) "-" (option.value) } { (option.value) }
+                        id={ (param) "-" (option.id) };
+                    label class="form-check-label" for={ (param) "-" (option.id) } { (option.value) }
                 }
             }
         }

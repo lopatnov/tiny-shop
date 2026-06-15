@@ -93,7 +93,7 @@ fn cart_table(items: &[CartItem]) -> Markup {
                             }
                         }
                         td { (jsonld::format_price_minor(item.unit_price_minor)) " " (item.currency) }
-                        td { (jsonld::format_price_minor(item.unit_price_minor * item.qty)) " " (item.currency) }
+                        td { (jsonld::format_price_minor(item.unit_price_minor.saturating_mul(item.qty))) " " (item.currency) }
                         td {
                             form method="post" action="/cart/remove" {
                                 input type="hidden" name="item_id" value=(item.id);
