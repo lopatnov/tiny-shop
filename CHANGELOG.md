@@ -57,6 +57,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the product page's "Додати в кошик" form; `slug` + `qty`), `POST /cart/update` (`qty=0`
   removes the item), `POST /cart/remove`. The `tiny-shop` binary now opens/migrates
   `orders.db` and wires `CartRepo` into `AppState`.
+- **Guest checkout (T1b-2)**: `orders::OrderRepo::checkout` turns cart items into an `Order` +
+  `OrderItem[]` (status `created`, no payment yet) in one atomic transaction, taking a fresh
+  price/`seller_id` snapshot from `catalog::SqliteCatalogSearch::get_card_by_id` rather than the
+  cart's snapshot. Guest contact details (email + optional name) are stored in the new
+  `order_contact` table (`migrations/orders/0004_order_contact.sql`), kept separate from
+  `orders` so PII doesn't bloat the main table and isn't shown on the confirmation page. New
+  routes: `GET /checkout` (order summary + contact form; redirects to `/cart` if empty),
+  `POST /checkout` (validates the contact form, creates the order, clears the cart, expires the
+  `cart` cookie, redirects to the confirmation page), `GET /checkout/done/{order_id}`
+  (confirmation page with order number, items, and total). Guests get a synthetic
+  `buyer_id` of the form `guest:<uuid>`; login-checkout is a separate follow-up.
 
 ### Security
 

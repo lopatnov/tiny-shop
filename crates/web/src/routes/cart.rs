@@ -42,7 +42,10 @@ async fn render(state: &AppState, headers: &HeaderMap) -> Result<String, WebErro
             p { a href="/" { "До каталогу" } }
         }
     } else {
-        cart_table(&items)
+        html! {
+            (cart_table(&items))
+            p { a href="/checkout" { "Оформити замовлення" } }
+        }
     };
 
     Ok(page_shell("Кошик", html! {}, main).into_string())

@@ -40,18 +40,44 @@ impl SqliteCatalogSearch {
         .await
         .map_err(be)?;
 
-        Ok(row.map(|r| ProductView {
-            id: r.get("id"),
-            seller_id: r.get("seller_id"),
-            title: r.get("title"),
-            slug: r.get("slug"),
-            description: r.get("description"),
-            price_minor: r.get("price_minor"),
-            currency: r.get("currency"),
-            status: r.get("status"),
-            category_id: r.get("category_id"),
-            thumb: r.get("thumb"),
-        }))
+        Ok(row.map(map_view_row))
+    }
+
+    /// Полная карточка товара по `product_id` (T1b-2 checkout — свежий снимок цены/`seller_id`
+    /// для позиции корзины, которая хранит `product_id`, а не `slug`).
+    ///
+    /// Возвращает `None`, если id не найден **или** товар не в статусе `published` — тот же
+    /// контракт, что `get_card_by_slug`.
+    pub async fn get_card_by_id(
+        &self,
+        product_id: &str,
+    ) -> Result<Option<ProductView>, SearchError> {
+        let row = sqlx::query(
+            "SELECT id, seller_id, title, slug, description, price_minor, currency, status, \
+                    category_id, thumb \
+             FROM product_projection WHERE id = ? AND status = 'published'",
+        )
+        .bind(product_id)
+        .fetch_optional(&self.db.reader)
+        .await
+        .map_err(be)?;
+
+        Ok(row.map(map_view_row))
+    }
+}
+
+fn map_view_row(r: sqlx::sqlite::SqliteRow) -> ProductView {
+    ProductView {
+        id: r.get("id"),
+        seller_id: r.get("seller_id"),
+        title: r.get("title"),
+        slug: r.get("slug"),
+        description: r.get("description"),
+        price_minor: r.get("price_minor"),
+        currency: r.get("currency"),
+        status: r.get("status"),
+        category_id: r.get("category_id"),
+        thumb: r.get("thumb"),
     }
 }
 

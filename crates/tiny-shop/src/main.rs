@@ -46,6 +46,7 @@ async fn main() -> anyhow::Result<()> {
         search: catalog::SqliteCatalogSearch::new(catalog_db.clone()),
         taxonomy: catalog::TaxonomyRepo::new(catalog_db.clone()),
         carts: orders::CartRepo::new(orders_db.clone()),
+        orders: orders::OrderRepo::new(orders_db.clone()),
         base_url: std::env::var("TINY_SHOP_BASE_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8080".into()),
     };

@@ -4,8 +4,8 @@ A marketplace for digital goods, designed to run on low-resource hardware (targe
 Celeron with ~6 GB RAM). Backend is a Rust modular monolith; persistence is per-context SQLite
 files (WAL mode) with a transactional outbox + in-process relay for cross-context projections.
 
-> Status: early development (Phase 1b — transactions, chunk 1: cart). See "Current status &
-> limitations" below before expecting a working storefront.
+> Status: early development (Phase 1b — transactions, chunk 2: guest checkout). See "Current
+> status & limitations" below before expecting a working storefront.
 
 ## Requirements
 
@@ -65,6 +65,12 @@ exposes:
   (`cart` cookie, `HttpOnly`/`SameSite=Lax`, 30 days) on first use;
 - `POST /cart/update` — change a cart item's quantity (`qty=0` removes the item);
 - `POST /cart/remove` — remove a cart item;
+- `GET /checkout` — order summary + guest contact form (email + optional name); redirects to
+  `/cart` if the cart is empty;
+- `POST /checkout` — validate the contact form, create the order (status `created`, no payment
+  yet) from a fresh catalog price snapshot, clear the cart, and redirect to the confirmation
+  page;
+- `GET /checkout/done/{order_id}` — order confirmation page (order number, items, total);
 - `GET /sitemap.xml` — sitemap listing the home page, the full category tree, and all
   published products;
 - `GET /robots.txt` — crawler directives pointing at the sitemap;
@@ -73,9 +79,9 @@ exposes:
 **There is no seeding mechanism or admin UI yet.** Databases are empty on first run, so the
 category/product pages will always return `404` until data is inserted manually (e.g. via tests
 or direct SQL against `product.db`/`catalog.db`). This is expected at this stage — seller
-onboarding, product creation UI, checkout, and digital delivery are planned for later phases.
-The cart works against whatever products exist in the catalog projection, but items cannot yet
-be purchased — checkout is the next 1b chunk.
+onboarding, product creation UI, and digital delivery are planned for later phases. Guest
+checkout creates real `created`-status orders, but there is no payment provider yet, so orders
+cannot progress beyond `created`.
 
 For the broader roadmap, see `.claude/backlog/roadmap.md`.
 
@@ -92,7 +98,7 @@ in-process relay (no shared transactions, no cross-file joins).
 | `identity` | Accounts, roles, sessions, sellers (Argon2id passwords, BLAKE3 session tokens). |
 | `catalog` | Category/attribute/filter taxonomy, product projection, FTS5 search. |
 | `product` | Seller-owned products and digital delivery configuration. |
-| `orders` | Orders/order items skeleton; anonymous cart (`carts`/`cart_items` in `orders.db`, cart-token cookie) — checkout logic comes later. |
+| `orders` | Orders/order items, guest checkout (`OrderRepo::checkout`, `order_contact`), and anonymous cart (`carts`/`cart_items` in `orders.db`, cart-token cookie). |
 | `payments` | Payment provider port/types (no adapter yet). |
 | `web` | Axum + maud SSR pages, routing, JSON-LD. |
 | `tiny-shop` | Binary: wires everything together and runs the server. |

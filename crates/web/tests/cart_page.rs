@@ -7,7 +7,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use catalog::{CatalogProjection, SqliteCatalogSearch, TaxonomyRepo};
 use db::{ContextDb, migrate_catalog, migrate_orders, open, relay::Dispatcher};
-use orders::CartRepo;
+use orders::{CartRepo, OrderRepo};
 use shared::{DomainEvent, now_ms};
 use tower::ServiceExt;
 use web::{AppState, router};
@@ -75,6 +75,7 @@ async fn app_state(t: &TempDb) -> AppState {
         search: SqliteCatalogSearch::new(t.db.clone()),
         taxonomy: TaxonomyRepo::new(t.db.clone()),
         carts: CartRepo::new(t.orders_db.clone()),
+        orders: OrderRepo::new(t.orders_db.clone()),
         base_url: "http://127.0.0.1:8080".to_string(),
     }
 }

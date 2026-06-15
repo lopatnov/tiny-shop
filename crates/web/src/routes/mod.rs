@@ -2,6 +2,7 @@
 
 pub mod cart;
 pub mod category;
+pub mod checkout;
 pub mod home;
 pub mod product;
 pub mod robots;
@@ -23,6 +24,8 @@ pub fn router() -> Router<AppState> {
         .route("/cart/add", post(cart::add))
         .route("/cart/update", post(cart::update))
         .route("/cart/remove", post(cart::remove))
+        .route("/checkout", get(checkout::show).post(checkout::submit))
+        .route("/checkout/done/{order_id}", get(checkout::done))
         .route("/sitemap.xml", get(sitemap::show))
         .route("/robots.txt", get(robots::show))
         .nest_service(
